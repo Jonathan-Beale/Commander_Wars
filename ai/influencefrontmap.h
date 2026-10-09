@@ -1,4 +1,5 @@
 #pragma once
+#include "coreengine/hexgrid.h"
 #include <QObject>
 #include <QMap>
 #include <QVector>
@@ -85,7 +86,7 @@ public:
      */
     Q_INVOKABLE const InfluenceInfo * getInfluenceInfo(qint32 x, qint32 y) const
     {
-        return &(m_InfluenceMap[x][y]);
+        return &(m_InfluenceMap[HexGrid::wrapX(x)][y]);
     }
     /**
      * @brief getTotalHighestInfluence

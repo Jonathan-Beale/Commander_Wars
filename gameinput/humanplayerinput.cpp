@@ -692,7 +692,7 @@ void HumanPlayerInput::showInfoMenu(qint32 x, qint32 y)
 
 void HumanPlayerInput::markedFieldSelected(QPoint point)
 {    
-    m_pGameAction->writeDataInt32(point.x());
+    m_pGameAction->writeDataInt32(HexGrid::wrapX(point.x()));
     m_pGameAction->writeDataInt32(point.y());
     clearMarkedFields();
     m_pGameAction->setInputStep(m_pGameAction->getInputStep() + 1);
@@ -873,7 +873,8 @@ void HumanPlayerInput::attachActionMenu(qint32 x, qint32 y)
     {        
         oxygine::spSlidingActorNoClipRect pMapSliding = m_pMenu->getMapSliding();
         oxygine::spActor pMapSlidingActor = m_pMenu->getMapSlidingActor();
-        float posX = x * GameMap::getImageSize() * m_pMap->getZoom() + m_pMap->getX() + pMapSliding->getX() + pMapSlidingActor->getX();
+        const QPoint fieldPos = HexGrid::fieldToScreen(x, y, GameMap::getImageSize());
+        float posX = fieldPos.x() * m_pMap->getZoom() + m_pMap->getX() + pMapSliding->getX() + pMapSlidingActor->getX();
         if (posX + m_CurrentMenu->getScaledWidth() > oxygine::Stage::getStage()->getWidth() - 40 - pGameMenue->getGameInfoBar()->getScaledWidth())
         {
             posX = oxygine::Stage::getStage()->getWidth() - m_CurrentMenu->getScaledWidth() - 40 - pGameMenue->getGameInfoBar()->getScaledWidth();
@@ -882,7 +883,7 @@ void HumanPlayerInput::attachActionMenu(qint32 x, qint32 y)
         {
             posX = 10;
         }
-        float posY = y * GameMap::getImageSize() * m_pMap->getZoom() + m_pMap->getY() + pMapSliding->getY() + pMapSlidingActor->getY();
+        float posY = fieldPos.y() * m_pMap->getZoom() + m_pMap->getY() + pMapSliding->getY() + pMapSlidingActor->getY();
         if (posY < 10)
         {
             posY = 10;
@@ -954,7 +955,8 @@ void HumanPlayerInput::createMarkedField(QPoint point, QColor color)
     if (m_pMap->onMap(point.x(), point.y()))
     {
         oxygine::spSprite pSprite = createMarkedFieldActor(point, color);
-        m_FieldPoints.push_back(QPoint(point.x(), point.y()));
+        // the fields are compared with the cursor position, which uses the columns of the map storage
+        m_FieldPoints.push_back(QPoint(HexGrid::wrapX(point.x()), point.y()));
         m_Fields.push_back(pSprite);
     }
 }
@@ -964,7 +966,15 @@ oxygine::spSprite HumanPlayerInput::createMarkedFieldActor(QPoint point, QColor 
     GameManager* pGameManager = GameManager::getInstance();
     oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
     oxygine::ResAnim* pAnim = pGameManager->getResAnim("marked+field");
-    if (pAnim != nullptr)
+    if (HexGrid::enabled() && GameMap::getHexTileAnim() != nullptr)
+    {
+        pSprite = GameMap::createHexTileSprite(color, GameMap::HexGraphic_Fill);
+        // keep the terrain below the marked field visible
+        pSprite->setAlpha(qMin(color.alpha(), 90));
+        pSprite->setPosition(HexGrid::fieldToScreen(point.x(), point.y(), GameMap::getImageSize()));
+        m_pMap->getMarkedFieldsLayer()->addChild(pSprite);
+    }
+    else if (pAnim != nullptr)
     {
         if (pAnim->getTotalFrames() > 1 && !Settings::getInstance()->getStaticMarkedFields())
         {
@@ -978,7 +988,7 @@ oxygine::spSprite HumanPlayerInput::createMarkedFieldActor(QPoint point, QColor 
         }
         pSprite->setColor(color);
         pSprite->setScale(static_cast<float>(GameMap::getImageSize()) / static_cast<float>(pAnim->getWidth()));
-        pSprite->setPosition(point.x() * GameMap::getImageSize(), point.y() * GameMap::getImageSize());        
+        pSprite->setPosition(HexGrid::fieldToScreen(point.x(), point.y(), GameMap::getImageSize()));
         m_pMap->getMarkedFieldsLayer()->addChild(pSprite);
     }
     return pSprite;
@@ -1342,8 +1352,9 @@ void HumanPlayerInput::zoomChanged(float zoom)
     {
         auto* pCursor = m_pMenu->getCursor();
         m_ZInformationLabel->setScale(1.0f / zoom);
-        m_ZInformationLabel->setPosition(pCursor->getMapPointX() * GameMap::getImageSize() + GameMap::getImageSize() / 2 - m_ZInformationLabel->getScaledWidth() / 2,
-                                         pCursor->getMapPointY() * GameMap::getImageSize() - 5 - m_ZInformationLabel->getScaledHeight());
+        const QPoint fieldPos = HexGrid::fieldToScreen(pCursor->getMapPointX(), pCursor->getMapPointY(), GameMap::getImageSize());
+        m_ZInformationLabel->setPosition(fieldPos.x() + GameMap::getImageSize() / 2 - m_ZInformationLabel->getScaledWidth() / 2,
+                                         fieldPos.y() - 5 - m_ZInformationLabel->getScaledHeight());
     }
 }
 
@@ -1368,9 +1379,9 @@ void HumanPlayerInput::createCursorPath(qint32 x, qint32 y)
         if (m_pUnitPathFindingSystem->getCosts(m_pUnitPathFindingSystem->getIndex(x, y), x, y, x, y, 0) >= 0)
         {
             // is it a neighbour field to the last target?
-            if (((points.size() > 0) && ((points[0].x() - x + points[0].y() - y) != 0)))
+            if (((points.size() > 0) && (points[0] != QPoint(x, y))))
             {
-                if ((points.size() > 0) && ((qAbs(points[0].x() - x) + qAbs(points[0].y() - y)) == 1))
+                if ((points.size() > 0) && (GlobalUtils::getDistance(points[0], QPoint(x, y)) == 1))
                 {
                     if (GlobalUtils::contains(points, QPoint(x, y)))
                     {
@@ -1454,13 +1465,36 @@ void HumanPlayerInput::createArrow(std::vector<QPoint>& points)
     GameManager* pGameManager = GameManager::getInstance();
     for (qint32 i = 0; i < points.size() - 1; i++)
     {
+        if (HexGrid::enabled() && GameMap::getHexTileAnim() != nullptr)
+        {
+            // hex grid: the path is build from half segments to the neighbour fields and an arrow head on the target field
+            auto addPathSprite = [this, &points](qint32 index, qint32 graphic, qint32 direction)
+            {
+                if (direction >= 0)
+                {
+                    oxygine::spSprite pPathSprite = GameMap::createHexTileSprite(Qt::white, graphic + direction);
+                    pPathSprite->setPosition(HexGrid::fieldToScreen(points[index].x(), points[index].y(), GameMap::getImageSize()));
+                    m_pMap->getMoveArrowLayer()->addChild(pPathSprite);
+                    m_Arrows.push_back(pPathSprite);
+                }
+            };
+            const qint32 previousDirection = HexGrid::neighbourIndex(points[i + 1].x() - points[i].x(), points[i + 1].y() - points[i].y());
+            addPathSprite(i, GameMap::HexGraphic_PathHalf, previousDirection);
+            addPathSprite(i + 1, GameMap::HexGraphic_PathHalf, HexGrid::neighbourIndex(points[i].x() - points[i + 1].x(), points[i].y() - points[i + 1].y()));
+            if (i == 0)
+            {
+                addPathSprite(i, GameMap::HexGraphic_PathHead, HexGrid::neighbourIndex(points[i].x() - points[i + 1].x(), points[i].y() - points[i + 1].y()));
+            }
+            continue;
+        }
         oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
         oxygine::ResAnim* pAnim = pGameManager->getResAnim("arrow+unit");
         if (pAnim != nullptr)
         {
             pSprite->setResAnim(pAnim);
             pSprite->setScale(static_cast<float>(GameMap::getImageSize()) / static_cast<float>(pAnim->getWidth()));
-            pSprite->setPosition(points[i].x() * GameMap::getImageSize() -(pSprite->getScaledWidth() - GameMap::getImageSize()) / 2,  points[i].y() * GameMap::getImageSize() -(pSprite->getScaledHeight() - GameMap::getImageSize()));
+            const QPoint fieldPos = HexGrid::fieldToScreen(points[i].x(), points[i].y(), GameMap::getImageSize());
+            pSprite->setPosition(fieldPos.x() -(pSprite->getScaledWidth() - GameMap::getImageSize()) / 2,  fieldPos.y() -(pSprite->getScaledHeight() - GameMap::getImageSize()));
             m_pMap->getMoveArrowLayer()->addChild(pSprite);
             m_Arrows.push_back(pSprite);
 

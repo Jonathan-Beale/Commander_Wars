@@ -1,3 +1,4 @@
+#include "coreengine/hexgrid.h"
 #include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
 
 #include <QSettings>
@@ -231,7 +232,27 @@ void Settings::setAiSlave(bool newAiSlave)
 
 bool Settings::getSpawnAiProcess()
 {
-    return m_spawnAiProcess;
+    return m_spawnAiProcess && !m_forceLocalAi;
+}
+
+void Settings::setForceLocalAi(bool forceLocalAi)
+{
+    m_forceLocalAi = forceLocalAi;
+}
+
+bool Settings::getHexGrid()
+{
+    return m_hexGrid;
+}
+
+void Settings::setHexGrid(bool hexGrid)
+{
+    m_hexGrid = hexGrid;
+    HexGrid::g_enabled = m_hexGrid && !qEnvironmentVariableIsSet("COW_SQUARE_GRID");
+    if (!HexGrid::g_enabled)
+    {
+        HexGrid::resetPlayArea();
+    }
 }
 
 void Settings::setSpawnAiProcess(bool newSpawnAiProcess)
@@ -1445,7 +1466,7 @@ void Settings::setup()
             MemoryManagement::create<Value<bool>>("Resolution", "SmallScreenDevice", &m_smallScreenDevice, smallScreenDevice, false, true),
             MemoryManagement::create<Value<float>>("Resolution", "IngameMenuScaling", &m_ingameMenuScaling, 1.0f, 0.5f, 10.0f),
             MemoryManagement::create<Value<float>>("Resolution", "GameScale", &m_gameScale, 1.0f, 0.125f, 16.0f),
-            MemoryManagement::create<Value<float>>("Resolution", "ZoomModifier", &m_zoomModifier, 2.0f, 1.1f, 2.0f),
+            MemoryManagement::create<Value<float>>("Resolution", "ZoomModifier", &m_zoomModifier, 1.25f, 1.02f, 2.0f),
 
             // general
             MemoryManagement::create<Value<QString>>("General", "language", &m_language, "en", "", ""),
@@ -1549,6 +1570,7 @@ void Settings::setup()
             MemoryManagement::create<Value<QString>>("Game", "DefaultBannlist", &m_defaultBannlist, "", "", ""),
             MemoryManagement::create<Value<bool>>("Game", "ShowCursor", &m_ShowCursor, true, false, true),
             MemoryManagement::create<Value<bool>>("Game", "AutoEndTurn", &m_AutoEndTurn, false, false, true),
+            MemoryManagement::create<Value<bool>>("Game", "HexGrid", &m_hexGrid, true, false, true),
             MemoryManagement::create<Value<bool>>("Game", "AutoCamera", &m_autoCamera, true, false, true),
             MemoryManagement::create<Value<bool>>("Game", "ShowIngameCoordinates", &m_showIngameCoordinates, true, false, true),
             MemoryManagement::create<Value<bool>>("Game", "CenterOnSelection", &m_centerOnMarkedField, true, false, true),
@@ -1645,6 +1667,7 @@ void Settings::loadSettings()
         setting->readValue(settings);
     }
     setUserPath(m_userPath);
+    setHexGrid(m_hexGrid);
     setFramesPerSecond(m_framesPerSecond);
     // Apply any pending mod-sync swaps before setActiveMods, so just-synced folders are visible to its missing-folder pruning pass.
     Filesupport::executePendingModSyncManifest(m_userPath, m_userPath);

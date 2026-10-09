@@ -8,6 +8,7 @@
 
 #include "coreengine/qmlvector.h"
 #include "coreengine/globalutils.h"
+#include "coreengine/hexgrid.h"
 #include "coreengine/gameconsole.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/settings.h"
@@ -224,6 +225,20 @@ spQmlVectorPoint GlobalUtils::getSpCircle(qint32 min, qint32 max)
         {
             ret->append(QPoint(0, 0));
         }
+        else if (HexGrid::enabled())
+        {
+            // walk the hex ring with the given radius
+            static const QPoint ringDirections[] = {QPoint(1, 0), QPoint(1, -1), QPoint(0, -1), QPoint(-1, 0), QPoint(-1, 1), QPoint(0, 1)};
+            QPoint pos(-currentRadius, currentRadius);
+            for (const auto & direction : ringDirections)
+            {
+                for (qint32 i = 0; i < currentRadius; ++i)
+                {
+                    ret->append(pos);
+                    pos += direction;
+                }
+            }
+        }
         else
         {
             qint32 x2 = -currentRadius;
@@ -311,12 +326,12 @@ void GlobalUtils::setImageSize(qint32 value)
 
 qint32 GlobalUtils::getDistance(const QPoint p1, const QPoint p2)
 {
-    return qAbs(p1.x() - p2.x()) + qAbs(p1.y() - p2.y());
+    return HexGrid::distance(p1.x() - p2.x(), p1.y() - p2.y());
 }
 
 qint32 GlobalUtils::getDistance(qint32 x1, qint32 y1, qint32 x2, qint32 y2)
 {
-    return qAbs(x1 - x2) + qAbs(y1 - y2);
+    return HexGrid::distance(x1 - x2, y1 - y2);
 }
 
 QmlVectorPoint* GlobalUtils::getEmptyPointArray()

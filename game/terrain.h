@@ -56,8 +56,69 @@ public:
     {
         BuildingLayer = 2,
     };
+    /**
+     * @brief useHexSprites if this terrain is shown as hex tile (hex grid prototype)
+     */
+    bool useHexSprites() const;
+    /**
+     * @brief isHexFeature if the terrain sprite is an object (forest, mountain) standing on the hex of the base terrain
+     */
+    bool isHexFeature() const;
+    /**
+     * @brief isVoid a field without a tile. It isn't drawn and nothing can enter it. Used for maps which aren't a parallelogram.
+     */
+    bool isVoid() const;
+    /**
+     * @brief applyHexLayout shrinks the given terrain sprite into the hex tile
+     */
+    void applyHexLayout(oxygine::spSprite & pSprite, bool baseSprite, bool hexMasked);
     static spTerrain createTerrain(const QString & terrainID, qint32 x, qint32 y, const QString & currentTerrainID, GameMap* pMap, const QString & currentTerrainPalette = "");
     virtual ~Terrain();
+    /**
+     * @brief render only draws the field if it's on the screen. Large maps have far more fields than fit on it.
+     */
+    virtual void render(const oxygine::RenderState& parentRS) override;
+    /**
+     * @brief setViewClipping needs to be turned off while the map is drawn into an image instead of the screen
+     */
+    static void setViewClipping(bool enabled)
+    {
+        m_viewClipping = enabled;
+    }
+    /**
+     * @brief update fields outside of the screen don't update their animations
+     */
+    virtual void update(const oxygine::UpdateState& us) override;
+    /**
+     * @brief isOnScreen if something at the given position of its parent is on the screen or close to it
+     */
+    static bool isOnScreen(const oxygine::RenderState& parentRS, qreal x, qreal y);
+    /**
+     * @brief nextRenderFrame needs to be called once for each drawn frame of the map
+     */
+    static void nextRenderFrame()
+    {
+        ++m_renderFrame;
+    }
+    static quint32 getRenderFrame()
+    {
+        return m_renderFrame;
+    }
+    /**
+     * @brief wasRendered if an object which was drawn the last time in the given frame is still on the screen.
+     * Always true while no map gets drawn, e.g. without ui.
+     */
+    static bool wasRendered(quint32 lastRenderFrame)
+    {
+        return !m_viewClipping || !m_skipHiddenUpdates || m_renderFrame == 0 || m_renderFrame - lastRenderFrame <= 2;
+    }
+    /**
+     * @brief updateVisible shared update of terrains, buildings and units: skips the update of objects outside of the screen
+     * and lets their animations catch up once they are shown again, so all animations stay in sync.
+     * @return the state the object needs to be updated with or nullptr if the update gets skipped
+     */
+    static const oxygine::UpdateState* updateVisible(const oxygine::UpdateState& us, quint32 lastRenderFrame,
+                                                     qint64 & lastUpdateTime, oxygine::UpdateState & catchUp);
 
     void init();
     /**
@@ -702,6 +763,11 @@ private:
      */
     oxygine::spSprite m_pTerrainSprite;
     /**
+     * @brief m_pHexSprite placeholder hex tile of the hex grid prototype
+     */
+    oxygine::spSprite m_pHexSprite;
+    oxygine::spSprite m_pHexBorderSprite;
+    /**
      * @brief m_pOverlaySprites
      */
     QVector<oxygine::spSprite> m_pOverlaySprites;    
@@ -765,6 +831,13 @@ private:
 
     QPoint m_test;
     GameMap* m_pMap{nullptr};
+private:
+    static inline bool m_viewClipping{!qEnvironmentVariableIsSet("COW_NO_VIEW_CLIPPING")};
+private:
+    static inline bool m_skipHiddenUpdates{!qEnvironmentVariableIsSet("COW_UPDATE_HIDDEN_ANIMATIONS")};
+    static inline quint32 m_renderFrame{0};
+    quint32 m_lastRenderFrame{0};
+    qint64 m_lastUpdateTime{-1};
 };
 
 Q_DECLARE_INTERFACE(Terrain, "Terrain");

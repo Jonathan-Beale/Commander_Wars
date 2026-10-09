@@ -1,3 +1,4 @@
+#include "coreengine/perftrace.h"
 #include <QElapsedTimer>
 #include <QCoreApplication>
 
@@ -196,24 +197,36 @@ void NormalAi::process()
     {
         m_timer.stop();
     }
+    PerfTrace::mark("ai: collect own units");
     spQmlVectorBuilding pBuildings = m_pPlayer->getSpBuildings();
     pBuildings->randomize();
     spQmlVectorUnit pUnits = m_pPlayer->getSpUnits();
     spQmlVectorUnit pEnemyUnits;
     spQmlVectorBuilding pEnemyBuildings;
     qint32 cost = 0;
-    m_pPlayer->getSiloRockettarget(2, 3, cost);
+    PerfTrace::mark("ai: silo target search");
+    // The best missile target is searched on the whole map. It's only used to decide if silos are worth a visit,
+    // so the search is skipped on maps without any silo.
+    if (mapHasMissileBuilding())
+    {
+        m_pPlayer->getSiloRockettarget(2, 3, cost);
+    }
     m_missileTarget = (cost >= m_minSiloDamage);
     // Special production actions are claimed inside useBuilding, so planning has to be ready first.
+    PerfTrace::mark("ai: prepare production");
     m_productionSystem.prepareProduction(pBuildings.get(), pUnits.get());
+    PerfTrace::mark("ai: use building");
     if (useBuilding(pBuildings, pUnits))
     {
     }
     else
     {
         AI_CONSOLE_PRINT("NormalAi::creating unit arrays()", GameConsole::eDEBUG);
+        PerfTrace::mark("ai: prepare enemy data");
         prepareEnemieData(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings);
+        PerfTrace::mark("ai: update all unit data");
         updateAllUnitData(pUnits, pBuildings);
+        PerfTrace::mark("ai: co power check");
         if (useCOPower(pUnits, pEnemyUnits))
         {
             clearUnitData();
@@ -221,6 +234,7 @@ void NormalAi::process()
         else
         {
             m_turnMode = GameEnums::AiTurnMode_DuringDay;
+            PerfTrace::mark("ai: action steps");
             if (performActionSteps(pUnits, pEnemyUnits, pBuildings, pEnemyBuildings))
             {
             }
@@ -336,51 +350,51 @@ bool NormalAi::performActionSteps(spQmlVectorUnit &pUnits, spQmlVectorUnit &pEne
                                   spQmlVectorBuilding &pBuildings, spQmlVectorBuilding &pEnemyBuildings)
 {
     AI_CONSOLE_PRINT("NormalAi::performActionSteps()", GameConsole::eDEBUG);
-    if (m_aiStep <= AISteps::moveUnits && buildCOUnit(pUnits))
+    if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step buildCOUnit") && buildCOUnit(pUnits))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && CoreAI::moveFlares(pUnits))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step moveFlares") && CoreAI::moveFlares(pUnits))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && CoreAI::moveOoziums(pUnits, pEnemyUnits))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step moveOoziums") && CoreAI::moveOoziums(pUnits, pEnemyUnits))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && CoreAI::moveBlackBombs(pUnits, pEnemyUnits))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step moveBlackBombs") && CoreAI::moveBlackBombs(pUnits, pEnemyUnits))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && captureBuildings(pUnits, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step captureBuildings") && captureBuildings(pUnits, pBuildings, pEnemyBuildings))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && joinCaptureBuildings(pUnits))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step joinCaptureBuildings") && joinCaptureBuildings(pUnits))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && moveSupport(AISteps::moveUnits, pUnits, false))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step moveSupport") && moveSupport(AISteps::moveUnits, pUnits, false))
     {
     }
     // indirect units
-    else if (m_aiStep <= AISteps::moveUnits && fireWithUnits(pUnits, 1, 2, std::numeric_limits<qint32>::max(), pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step fireWithUnits") && fireWithUnits(pUnits, 1, 2, std::numeric_limits<qint32>::max(), pBuildings, pEnemyBuildings))
     {
     }
     // direct units
-    else if (m_aiStep <= AISteps::moveUnits && fireWithUnits(pUnits, 1, 1, 1, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step fireWithUnits") && fireWithUnits(pUnits, 1, 1, 1, pBuildings, pEnemyBuildings))
     {
     }
-    else if (m_aiStep <= AISteps::moveUnits && repairUnits(pUnits, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveUnits && PerfTrace::markTrue("ai: step repairUnits") && repairUnits(pUnits, pBuildings, pEnemyBuildings))
     {
     }
-    else if (m_aiStep <= AISteps::moveToTargets && refillUnits(pUnits, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveToTargets && PerfTrace::markTrue("ai: step refillUnits") && refillUnits(pUnits, pBuildings, pEnemyBuildings))
     {
     }
-    else if (m_aiStep <= AISteps::moveToTargets && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 1, 1))
+    else if (m_aiStep <= AISteps::moveToTargets && PerfTrace::markTrue("ai: step moveUnits") && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 1, 1))
     {
     }
-    else if (m_aiStep <= AISteps::moveIndirectsToTargets && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 2, std::numeric_limits<qint32>::max()))
+    else if (m_aiStep <= AISteps::moveIndirectsToTargets && PerfTrace::markTrue("ai: step moveUnits") && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 2, std::numeric_limits<qint32>::max()))
     {
     }
-    else if (m_aiStep <= AISteps::loadUnits && !m_usedTransportSystem && loadUnits(pUnits, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::loadUnits && !m_usedTransportSystem && PerfTrace::markTrue("ai: step loadUnits") && loadUnits(pUnits, pBuildings, pEnemyBuildings))
     {
     }
-    else if (m_aiStep <= AISteps::moveTransporters && !m_usedTransportSystem && moveTransporters(pUnits, pEnemyUnits, pBuildings, pEnemyBuildings))
+    else if (m_aiStep <= AISteps::moveTransporters && !m_usedTransportSystem && PerfTrace::markTrue("ai: step moveTransporters") && moveTransporters(pUnits, pEnemyUnits, pBuildings, pEnemyBuildings))
     {
     }
     else
@@ -400,19 +414,19 @@ bool NormalAi::performActionSteps(spQmlVectorUnit &pUnits, spQmlVectorUnit &pEne
             }
             return performActionSteps(pUnits, pEnemyUnits, pBuildings, pEnemyBuildings);
         }
-        else if (m_aiStep <= AISteps::loadUnits && loadUnits(pUnits, pBuildings, pEnemyBuildings))
+        else if (m_aiStep <= AISteps::loadUnits && PerfTrace::markTrue("ai: step loadUnits") && loadUnits(pUnits, pBuildings, pEnemyBuildings))
         {
         }
-        else if (m_aiStep <= AISteps::moveSupportUnits && moveSupport(AISteps::moveSupportUnits, pUnits, true))
+        else if (m_aiStep <= AISteps::moveSupportUnits && PerfTrace::markTrue("ai: step moveSupport") && moveSupport(AISteps::moveSupportUnits, pUnits, true))
         {
         }
-        else if (m_aiStep <= AISteps::moveSupportUnits && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 1, std::numeric_limits<qint32>::max(), true))
+        else if (m_aiStep <= AISteps::moveSupportUnits && PerfTrace::markTrue("ai: step moveUnits") && moveUnits(pUnits, pBuildings, pEnemyUnits, pEnemyBuildings, 1, std::numeric_limits<qint32>::max(), true))
         {
         }
-        else if (m_aiStep <= AISteps::moveAway && moveAwayFromProduction(pUnits))
+        else if (m_aiStep <= AISteps::moveAway && PerfTrace::markTrue("ai: step moveAwayFromProduction") && moveAwayFromProduction(pUnits))
         {
         }
-        else if (m_aiStep <= AISteps::buildUnits && buildUnits(pBuildings, pUnits, pEnemyUnits, pEnemyBuildings))
+        else if (m_aiStep <= AISteps::buildUnits && PerfTrace::markTrue("ai: step buildUnits") && buildUnits(pBuildings, pUnits, pEnemyUnits, pEnemyBuildings))
         {
         }
         else
@@ -550,8 +564,11 @@ bool NormalAi::fireWithUnits(spQmlVectorUnit &pUnits, qint32 minfireRange, qint3
                 pAction->setTarget(QPoint(pUnit->Unit::getX(), pUnit->Unit::getY()));
                 std::vector<CoreAI::DamageData> ret;
                 std::vector<QVector3D> moveTargetFields;
+                PerfTrace::mark("ai: fire find targets");
                 CoreAI::getAttackTargets(pUnit, pAction, unitData.pUnitPfs.get(), ret, moveTargetFields, unitData.movementPoints + 1);
+                PerfTrace::mark("ai: fire rate targets");
                 qint32 targetIdx = getBestAttackTarget(unitData, ret, moveTargetFields, pBuildings, pEnemyBuildings);
+                PerfTrace::mark("ai: fire rated");
                 if (targetIdx >= 0)
                 {
                     CoreAI::DamageData target = ret[targetIdx];
@@ -1519,10 +1536,26 @@ float NormalAi::getOwnSupportDamage(Unit *pUnit, QPoint moveTarget, Unit *pEnemy
             float minFundsDamage = -pUnitData.pUnit->getCoUnitValue() * m_minAttackFunds;
             if (GlobalUtils::getDistance(moveTarget, position) <= movepoints)
             {
-                std::vector<CoreAI::DamageData> ret;
-                spQmlVectorPoint firerange;
-                firerange = GlobalUtils::getSpCircle(pUnitData.minFireRange, pUnitData.maxFireRange);
-                CoreAI::getAttackTargetsFast(pUnitData.pUnit.get(), *firerange.get(), pUnitData.pUnitPfs.get(), ret);
+                // The possible attacks of a supporting unit are the same for all targets which get rated, as long as no
+                // action was performed. They were searched again for each rated attack before, which was the slowest part
+                // of the attack step with large armies.
+                static const bool useSupportCache = !qEnvironmentVariableIsSet("COW_NO_AI_SUPPORT_CACHE");
+                const quint64 stateVersion = MovementTableManager::getMovementStateVersion();
+                if (m_supportTargetVersion != stateVersion)
+                {
+                    m_supportTargetCache.clear();
+                    m_supportTargetVersion = stateVersion;
+                }
+                auto cacheIter = m_supportTargetCache.find(pUnitData.pUnit.get());
+                if (!useSupportCache || cacheIter == m_supportTargetCache.end())
+                {
+                    std::vector<CoreAI::DamageData> newTargets;
+                    spQmlVectorPoint firerange;
+                    firerange = GlobalUtils::getSpCircle(pUnitData.minFireRange, pUnitData.maxFireRange);
+                    CoreAI::getAttackTargetsFast(pUnitData.pUnit.get(), *firerange.get(), pUnitData.pUnitPfs.get(), newTargets);
+                    cacheIter = m_supportTargetCache.insert_or_assign(pUnitData.pUnit.get(), std::move(newTargets)).first;
+                }
+                const std::vector<CoreAI::DamageData> & ret = cacheIter->second;
 
                 std::vector<Unit *> pUsedUnits;
                 float newFundsDamage = std::numeric_limits<float>::lowest();
@@ -1742,32 +1775,57 @@ float NormalAi::calculateCounterDamage(MoveUnitData &curUnitData, QPoint newPosi
                         if (found &&
                             damageData.x() >= m_notAttackableDamage)
                         {
-                            for (auto &unitData : m_OwnUnits)
+                            // The enemy spreads its attacks over all own units it can reach: this factor only depends on the enemy
+                            // and the attacking unit, not on the field which gets rated. Searching all own units and all fields of
+                            // the enemy for each rated attack again was the slowest part of rating attacks.
+                            static const bool useSpreadCache = !qEnvironmentVariableIsSet("COW_NO_AI_COUNTER_CACHE");
+                            const quint64 stateVersion = MovementTableManager::getMovementStateVersion();
+                            if (m_counterSpreadVersion != stateVersion)
                             {
-                                for (auto &target : targets)
+                                m_counterSpreadCache.clear();
+                                m_counterSpreadVersion = stateVersion;
+                            }
+                            const std::pair<Unit*, Unit*> spreadKey(pNextEnemy.get(), curUnitData.pUnit.get());
+                            auto spreadIter = m_counterSpreadCache.find(spreadKey);
+                            if (useSpreadCache && spreadIter != m_counterSpreadCache.end())
+                            {
+                                damageData.moveLeft(damageData.x() * spreadIter->second);
+                            }
+                            else
+                            {
+                                const qreal damageBefore = damageData.x();
+                                for (auto &unitData : m_OwnUnits)
                                 {
-                                    Unit *pNextUnit = unitData.pUnit.get();
-                                    distance = GlobalUtils::getDistance(QPoint(pNextUnit->Unit::getX(), pNextUnit->Unit::getY()), target);
-                                    Unit *pTargetUnit = m_pMap->getTerrain(target.x(), target.y())->getUnit();
-                                    if (distance >= minFireRange && distance <= maxFireRange &&
-                                        (pTargetUnit == nullptr ||
-                                         pTargetUnit->getOwner()->isAlly(m_pPlayer)) &&
-                                        enemyIsland == m_IslandMaps[enemyIslandIdx]->getIsland(target.x(), target.y()))
+                                    for (auto &target : targets)
                                     {
-                                        if (unitData.unitCosts > 0 && curUnitData.unitCosts > 0)
+                                        Unit *pNextUnit = unitData.pUnit.get();
+                                        distance = GlobalUtils::getDistance(QPoint(pNextUnit->Unit::getX(), pNextUnit->Unit::getY()), target);
+                                        Unit *pTargetUnit = m_pMap->getTerrain(target.x(), target.y())->getUnit();
+                                        if (distance >= minFireRange && distance <= maxFireRange &&
+                                            (pTargetUnit == nullptr ||
+                                             pTargetUnit->getOwner()->isAlly(m_pPlayer)) &&
+                                            enemyIsland == m_IslandMaps[enemyIslandIdx]->getIsland(target.x(), target.y()))
                                         {
-                                            if (curUnitData.unitCosts > unitData.unitCosts)
+                                            if (unitData.unitCosts > 0 && curUnitData.unitCosts > 0)
                                             {
-                                                // reduce damage the more units it can attack
-                                                damageData.moveLeft(damageData.x() - damageData.x() * 0.5f * unitData.unitCosts / curUnitData.unitCosts);
+                                                if (curUnitData.unitCosts > unitData.unitCosts)
+                                                {
+                                                    // reduce damage the more units it can attack
+                                                    damageData.moveLeft(damageData.x() - damageData.x() * 0.5f * unitData.unitCosts / curUnitData.unitCosts);
+                                                }
+                                                else
+                                                {
+                                                    damageData.moveLeft(damageData.x() - damageData.x() * 0.5f * curUnitData.unitCosts / unitData.unitCosts);
+                                                }
                                             }
-                                            else
-                                            {
-                                                damageData.moveLeft(damageData.x() - damageData.x() * 0.5f * curUnitData.unitCosts / unitData.unitCosts);
-                                            }
+                                            break;
                                         }
-                                        break;
                                     }
+                                }
+
+                                if (damageBefore > 0)
+                                {
+                                    m_counterSpreadCache.insert_or_assign(spreadKey, damageData.x() / damageBefore);
                                 }
                             }
                         }                        
@@ -1831,24 +1889,34 @@ void NormalAi::updateAllUnitData(spQmlVectorUnit &pUnits, spQmlVectorBuilding &p
 {
     AI_CONSOLE_PRINT("NormalAi::updateAllUnitData()", GameConsole::eDEBUG);
     bool initial = m_EnemyUnits.size() == 0;
+    PerfTrace::mark("ai: uaud get enemy units");
     spQmlVectorUnit enemyUnits = m_pPlayer->getSpEnemyUnits();
+    PerfTrace::mark("ai: uaud prune enemies");
     enemyUnits->pruneEnemies(pUnits.get(), pBuildings.get(), m_ownBuildingPruneRange, m_enemyPruneRange);
+    PerfTrace::mark("ai: uaud rebuild island own");
     rebuildIsland(pUnits);
+    PerfTrace::mark("ai: uaud rebuild island enemy");
     rebuildIsland(enemyUnits);
 
+    PerfTrace::mark("ai: uaud update own unit data");
     updateUnitData(pUnits, m_OwnUnits, false, m_EnemyUnits);
+    PerfTrace::mark("ai: uaud update enemy unit data");
     updateUnitData(enemyUnits, m_EnemyUnits, true, m_OwnUnits);
+    PerfTrace::mark("ai: uaud sort and rest");
     sortUnitsFarFromEnemyFirst(m_OwnUnits, enemyUnits);
     if (initial)
     {
+        PerfTrace::mark("ai: uaud virtual damage");
         calcVirtualDamage();
     }
     m_updatePoints.clear();
 
     if (initial)
     {
+        PerfTrace::mark("ai: uaud influence map");
         createUnitInfluenceMap();
     }
+    PerfTrace::mark("ai: uaud done");
 }
 
 void NormalAi::createUnitInfluenceMap()
@@ -1856,7 +1924,9 @@ void NormalAi::createUnitInfluenceMap()
     // create influence map at the start of the turn
     m_InfluenceFrontMap.clear();
     m_InfluenceFrontMap.setOwner(m_pPlayer);
+    PerfTrace::mark("ai: influence buildings");
     m_InfluenceFrontMap.addBuildingInfluence();
+    PerfTrace::mark("ai: influence units");
     Interpreter *pInterpreter = Interpreter::getInstance();
     for (auto &unit : m_OwnUnits)
     {
@@ -1868,8 +1938,11 @@ void NormalAi::createUnitInfluenceMap()
         pInterpreter->threadProcessEvents();
         m_InfluenceFrontMap.addUnitInfluence(unit.pUnit.get(), unit.pUnitPfs.get(), unit.movementPoints);
     }
+    PerfTrace::mark("ai: influence owners");
     m_InfluenceFrontMap.updateOwners();
+    PerfTrace::mark("ai: influence front lines");
     m_InfluenceFrontMap.calculateGlobalData();
+    PerfTrace::mark("ai: influence done");
 }
 
 void NormalAi::updateUnitData(spQmlVectorUnit &pUnits, std::vector<MoveUnitData> &pUnitData, bool enemy, std::vector<MoveUnitData> &otherUnitData)
@@ -1921,6 +1994,22 @@ void NormalAi::updateUnitData(spQmlVectorUnit &pUnits, std::vector<MoveUnitData>
     }
     Interpreter *pInterpreter = Interpreter::getInstance();
     std::vector<bool> updated(pUnitData.size(), false);
+    // A field can only get free for own units if an enemy was destroyed by the last action.
+    // The list of the enemies still holds destroyed units at this point: it gets cleaned up after the own units.
+    bool enemyDestroyed = false;
+    if (!enemy)
+    {
+        for (const auto & otherUnit : otherUnitData)
+        {
+            if (otherUnit.pUnit.get() == nullptr ||
+                otherUnit.pUnit->getHp() <= 0 ||
+                otherUnit.pUnit->getTerrain() == nullptr)
+            {
+                enemyDestroyed = true;
+                break;
+            }
+        }
+    }
     for (auto point : m_updatePoints)
     {
         for (qint32 i2 = 0; i2 < pUnitData.size(); i2++)
@@ -1934,11 +2023,83 @@ void NormalAi::updateUnitData(spQmlVectorUnit &pUnits, std::vector<MoveUnitData>
                     pUnit->getHp() > 0 &&
                     pUnit->getTerrain() != nullptr)
                 {
-                    if (qAbs(point.x() - pUnit->Unit::getX()) +
-                            qAbs(point.y() - pUnit->Unit::getY()) <=
+                    if (GlobalUtils::getDistance(point.x(), point.y(), pUnit->Unit::getX(), pUnit->Unit::getY()) <=
                         unitData.movementPoints * m_influenceUnitRange + 2)
                     {
-                        createUnitData(pUnit, unitData, enemy, m_influenceUnitRange + 1, otherUnitData, true);
+                        // The path search of a unit only changes if one of the changed fields is inside of it or next to it:
+                        // a field which couldn't be reached before and isn't next to a reachable one can't be entered or block a path now.
+                        // Searching again is the slowest part of the ai on large maps, so the stored search is kept in this case.
+                        static const bool reuseSearch = !qEnvironmentVariableIsSet("COW_NO_AI_PFS_REUSE");
+                        // Speed over precision: enemies can't move during the turn of the ai, so their path search of the start
+                        // of the turn is kept for the whole turn. It doesn't know about fields the ai blocked since then,
+                        // which lets the ai overrate the reach of enemies a bit. COW_AI_FULL_REFRESH restores the old behaviour.
+                        static const bool fullRefresh = qEnvironmentVariableIsSet("COW_AI_FULL_REFRESH");
+                        const bool searched = unitData.pUnitPfs.get() != nullptr &&
+                                              unitData.pUnitPfs->getTargetCosts(pUnit->Unit::getX(), pUnit->Unit::getY()) >= 0;
+                        if (enemy && !fullRefresh && searched)
+                        {
+                            updated[i2] = true;
+                            continue;
+                        }
+                        bool affected = true;
+                        if (reuseSearch &&
+                            unitData.pUnitPfs.get() != nullptr &&
+                            unitData.pUnitPfs->getTargetCosts(pUnit->Unit::getX(), pUnit->Unit::getY()) >= 0)
+                        {
+                            affected = false;
+                            // Own units don't block each other, so a move of an own unit doesn't change the paths of the others.
+                            // Their paths only change if an enemy disappeared from a field which was blocked before.
+                            // With fog a move can also reveal hidden enemies, so the old check is used then.
+                            const bool onlyUnblocked = !enemy && !fullRefresh &&
+                                                       m_pMap->getGameRules()->getFogMode() == GameEnums::Fog_Off;
+                            for (const auto & changedPoint : m_updatePoints)
+                            {
+                                if (unitData.pUnitPfs->getTargetCosts(changedPoint.x(), changedPoint.y()) >= 0)
+                                {
+                                    if (!onlyUnblocked ||
+                                        (changedPoint.x() == pUnit->Unit::getX() && changedPoint.y() == pUnit->Unit::getY()))
+                                    {
+                                        // the unit itself acted or everything gets checked
+                                        affected = true;
+                                        break;
+                                    }
+                                    continue;
+                                }
+                                if (onlyUnblocked && !enemyDestroyed)
+                                {
+                                    // the field is out of range or blocked like before
+                                    continue;
+                                }
+                                if (onlyUnblocked && m_pMap->onMap(changedPoint.x(), changedPoint.y()))
+                                {
+                                    Unit* pBlocker = m_pMap->getTerrain(changedPoint.x(), changedPoint.y())->getUnit();
+                                    if (pBlocker != nullptr && m_pPlayer->isEnemyUnit(pBlocker))
+                                    {
+                                        // still blocked
+                                        continue;
+                                    }
+                                }
+                                for (qint32 i = 0; i < HexGrid::neighbourCount() && !affected; ++i)
+                                {
+                                    const qint32 nextX = changedPoint.x() + HexGrid::neighbours[i].x();
+                                    const qint32 nextY = changedPoint.y() + HexGrid::neighbours[i].y();
+                                    if (m_pMap->onMap(nextX, nextY) &&
+                                        unitData.pUnitPfs->getTargetCosts(nextX, nextY) >= 0)
+                                    {
+                                        affected = true;
+                                    }
+                                }
+                                if (affected)
+                                {
+                                    break;
+                                }
+                            }
+                        }
+                        if (affected)
+                        {
+                            // a new search used a larger range than the first search of the turn before, which made it far slower
+                            createUnitData(pUnit, unitData, enemy, fullRefresh ? m_influenceUnitRange + 1 : m_influenceUnitRange, otherUnitData, true);
+                        }
                     }
                     updated[i2] = true;
                 }
@@ -1982,7 +2143,17 @@ void NormalAi::createUnitData(spUnit pUnit, MoveUnitData &data, bool enemy, doub
         }
         if (pUnit->getHasMoved())
         {
-            data.pUnitPfs->setMovepoints(moveMultiplier * data.movementPoints - 1);
+            static const bool fullRefresh = qEnvironmentVariableIsSet("COW_AI_FULL_REFRESH");
+            if (!enemy && !fullRefresh)
+            {
+                // Speed over precision: an own unit which already moved is done for this turn.
+                // Its search only needs to know the fields around it, not its reach of the next turns.
+                data.pUnitPfs->setMovepoints(1);
+            }
+            else
+            {
+                data.pUnitPfs->setMovepoints(moveMultiplier * data.movementPoints - 1);
+            }
         }
         else
         {

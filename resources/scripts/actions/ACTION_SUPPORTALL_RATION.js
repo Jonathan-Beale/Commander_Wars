@@ -7,27 +7,13 @@ var Constructor = function()
         var targetField = action.getTarget();
         if (ACTION.isEmptyFieldAndHasNotMoved(action, unit, actionTargetField, targetField, map))
         {
-            var x = actionTargetField.x + 1;
-            var y = actionTargetField.y;
-            if (ACTION_SUPPORTALL_RATION.checkUnit(unit, x, y, map))
+            var fields = ACTION.getNeighbourFields(actionTargetField);
+            for (var i = 0; i < fields.length; i++)
             {
-                return true;
-            }
-            x = actionTargetField.x - 1;
-            if (ACTION_SUPPORTALL_RATION.checkUnit(unit, x, y, map))
-            {
-                return true;
-            }
-            x = actionTargetField.x;
-            y = actionTargetField.y + 1;
-            if (ACTION_SUPPORTALL_RATION.checkUnit(unit, x, y, map))
-            {
-                return true;
-            }
-            y = actionTargetField.y - 1;
-            if (ACTION_SUPPORTALL_RATION.checkUnit(unit, x, y, map))
-            {
-                return true;
+                if (ACTION_SUPPORTALL_RATION.checkUnit(unit, fields[i].x, fields[i].y, map))
+                {
+                    return true;
+                }
             }
         }
         return false;

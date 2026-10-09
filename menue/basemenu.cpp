@@ -5,7 +5,14 @@ Basemenu::Basemenu()
 {
     connect(&m_onEnterTimer, &QTimer::timeout, this, &Basemenu::onEnter);
     m_onEnterTimer.setSingleShot(true);
-    m_onEnterTimer.start(10000);
+    // the automation hooks of init.js are called after this delay. COW_MENU_ENTER_DELAY_MS shortens it for automated runs.
+    bool ok = false;
+    qint32 delay = qEnvironmentVariableIntValue("COW_MENU_ENTER_DELAY_MS", &ok);
+    if (!ok || delay < 0)
+    {
+        delay = 10000;
+    }
+    m_onEnterTimer.start(delay);
 }
 
 bool Basemenu::getFocused() const

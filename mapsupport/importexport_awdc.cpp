@@ -61,8 +61,8 @@ void GameMap::importAW4Map(QString file, EditorMenue* pMenu)
             {
                 spTerrain pTerrain = Terrain::createTerrain(GameMap::PLAINS, x, y, "", this);
                 m_rowSprites[y]->addChild(pTerrain);
-                m_fields[y][x] = pTerrain;
-                pTerrain->setPosition(x * m_imagesize, y * m_imagesize);
+                m_fields[y][HexGrid::wrapX(x)] = pTerrain;
+                pTerrain->setPosition(HexGrid::fieldToScreen(x, y, m_imagesize));
             }
         }
         // read map start byte

@@ -11,6 +11,7 @@
 #include "coreengine/filesupport.h"
 #include "coreengine/mainapp.h"
 #include "coreengine/workerObject.h"
+#include "coreengine/perftrace.h"
 #include "coreengine/gameconsole.h"
 #include "coreengine/settings.h"
 #include "coreengine/userdata.h"
@@ -124,6 +125,7 @@ WorkerObject::~WorkerObject()
 void WorkerObject::start()
 {
     GameConsole::print("Loading worker object", GameConsole::eDEBUG);
+    PerfTrace::mark("worker: create script interpreter");
     Mainapp* pApp = Mainapp::getInstance();
     spLoadingScreen pLoadingScreen = LoadingScreen::getInstance();
     pApp->pauseRendering();
@@ -131,6 +133,7 @@ void WorkerObject::start()
     Settings::getInstance()->setLanguage(Settings::getInstance()->getLanguage());    
     pApp->continueRendering();
     UiFactory::getInstance();
+    PerfTrace::mark("worker: general scripts");
     // load General-Base Scripts
     QStringList searchPaths = VirtualPaths::createSearchPath("resources/scripts/general");
     for (auto & path : searchPaths)
@@ -190,8 +193,10 @@ void WorkerObject::start()
     // achievements should be loaded last
     AchievementManager* pAchievementManager = AchievementManager::getInstance();
     pAchievementManager->loadAll();
+    PerfTrace::mark("worker: base damage table");
     Player::getNeutralTableAnim();
     pUnitspritemanager->createBaseDamageTable();
+    PerfTrace::mark("worker: finalize");
 
     const QString obj = "Global";
     const QString func = "finalizeLoading";

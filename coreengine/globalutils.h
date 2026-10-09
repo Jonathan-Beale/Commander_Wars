@@ -9,6 +9,8 @@
 #include <QDir>
 #include <QRandomGenerator>
 
+#include "coreengine/hexgrid.h"
+
 class QmlVectorPoint;
 using spQmlVectorPoint = std::shared_ptr<QmlVectorPoint>;
 

@@ -14,6 +14,21 @@
 #include "resource_management/coperkmanager.h"
 #include "resource_management/gamemanager.h"
 
+/**
+ * @brief createFogFieldSprite sprite covering a single field. A hex on the hex grid.
+ */
+static oxygine::spSprite createFogFieldSprite(QColor color)
+{
+    if (HexGrid::enabled() && GameMap::getHexGraphic(GameMap::HexGraphic_Fill) != nullptr)
+    {
+        return GameMap::createHexTileSprite(color, GameMap::HexGraphic_Fill);
+    }
+    oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
+    sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());
+    sprite->setColor(color);
+    return sprite;
+}
+
 GameRules::GameRules(GameMap* pMap)
     : m_RoundTimer(this),
       m_pMap(pMap)
@@ -36,6 +51,7 @@ void GameRules::resetArrays()
     m_observerList.clear();
     m_GameRules.clear();
     m_FogSprites.clear();
+    m_FogSpriteTypes.clear();
 }
 
 bool GameRules::getCoGlobalD2D() const
@@ -845,6 +861,11 @@ void GameRules::createWeatherSprites()
                 {
                     for (qint32 y = 0; y < heigth; y++)
                     {
+                        if (m_pMap->getTerrain(x, y)->isVoid())
+                        {
+                            // no weather on fields without a tile
+                            continue;
+                        }
                         oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
                         if (pAnim->getTotalFrames() > 1)
                         {
@@ -856,7 +877,7 @@ void GameRules::createWeatherSprites()
                             pSprite->setResAnim(pAnim);
                         }
                         pSprite->setScale(static_cast<float>(GameMap::getImageSize()) / static_cast<float>(pAnim->getWidth()));
-                        pSprite->setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+                        pSprite->setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
                         pSprite->setPriority(static_cast<qint32>(Mainapp::ZOrder::Weather));
                         m_WeatherSprites.push_back(pSprite);
                         m_weatherMaster->addChild(pSprite);
@@ -898,6 +919,7 @@ void GameRules::resetFogSprites()
         }
     }
     m_FogSprites.clear();
+    m_FogSpriteTypes.clear();
     Mainapp::getInstance()->continueRendering();
 }
 
@@ -991,6 +1013,10 @@ void GameRules::createFogVision()
             m_FogSprites.push_back(std::vector<oxygine::spSprite>(heigth, oxygine::spSprite()));
         }
     }
+    if (m_FogSpriteTypes.size() != m_FogSprites.size())
+    {
+        m_FogSpriteTypes.assign(width, std::vector<qint8>(heigth, -1));
+    }
     // update vision for each player
     for (qint32 i = 0; i < m_pMap->getPlayerCount(); i++)
     {
@@ -1028,10 +1054,21 @@ void GameRules::createFieldFog(qint32 x, qint32 y, Player* pPlayer, QColor fogOf
             pUnit->setUnitVisible(false, pPlayer);
         }
     }
-    if (m_FogSprites[x][y].get() != nullptr)
+    // the fog sprites above the map look the same as long as the vision type is the same, so they are kept.
+    // This runs for each field after each action.
+    const bool keepSprite = m_FogSprites[HexGrid::wrapX(x)][y].get() != nullptr &&
+                            m_FogSpriteTypes[HexGrid::wrapX(x)][y] == static_cast<qint8>(visible) &&
+                            (visible == GameEnums::VisionType_Fogged || visible == GameEnums::VisionType_Mist);
+    if (!keepSprite && m_FogSprites[HexGrid::wrapX(x)][y].get() != nullptr)
     {
-        m_FogSprites[x][y]->detachAndRemove();
-        m_FogSprites[x][y].reset();
+        m_FogSprites[HexGrid::wrapX(x)][y]->detachAndRemove();
+        m_FogSprites[HexGrid::wrapX(x)][y].reset();
+    }
+    m_FogSpriteTypes[HexGrid::wrapX(x)][y] = static_cast<qint8>(visible);
+    if (m_pMap->getTerrain(x, y)->isVoid())
+    {
+        // fields without a tile don't show fog
+        return;
     }
     switch (visible)
     {
@@ -1053,14 +1090,16 @@ void GameRules::createFieldFog(qint32 x, qint32 y, Player* pPlayer, QColor fogOf
                 pBuilding->setVisible(true);
                 pBuilding->updatePlayerColor(false);
             }
+            if (keepSprite)
+            {
+                break;
+            }
             // create fog of war sprite
-            oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
-            sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());
-            sprite->setColor(fogOfWarColor);
+            oxygine::spSprite sprite = createFogFieldSprite(fogOfWarColor);
             sprite->setPriority(static_cast<qint32>(Mainapp::ZOrder::FogFields));
-            sprite->setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+            sprite->setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
             m_fogMaster->addChild(sprite);
-            m_FogSprites[x][y] = sprite;
+            m_FogSprites[HexGrid::wrapX(x)][y] = sprite;
             break;
         }
         case GameEnums::VisionType_Shrouded:
@@ -1072,25 +1111,25 @@ void GameRules::createFieldFog(qint32 x, qint32 y, Player* pPlayer, QColor fogOf
                 pBuilding->setVisible(false);
             }
             // create fog of war sprite
-            oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
-            sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());
-            sprite->setColor(0, 0, 0, 255);
+            oxygine::spSprite sprite = createFogFieldSprite(QColor(0, 0, 0, 255));
             sprite->setPriority(static_cast<qint32>(Terrain::DrawPriority::Shroud));
             pTerrain->addChild(sprite);
             pTerrain->setSpriteVisibility(false);
-            m_FogSprites[x][y] = sprite;
+            m_FogSprites[HexGrid::wrapX(x)][y] = sprite;
             break;
         }
         case GameEnums::VisionType_Mist:
         {
+            if (keepSprite)
+            {
+                break;
+            }
             // create fog of war sprite
-            oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
-            sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());
-            sprite->setColor(fogOfMistColor);
+            oxygine::spSprite sprite = createFogFieldSprite(fogOfMistColor);
             sprite->setPriority(static_cast<qint32>(Mainapp::ZOrder::FogFields));
-            sprite->setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+            sprite->setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
             m_fogMaster->addChild(sprite);
-            m_FogSprites[x][y] = sprite;
+            m_FogSprites[HexGrid::wrapX(x)][y] = sprite;
             break;
         }
     }

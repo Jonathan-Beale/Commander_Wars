@@ -64,6 +64,14 @@ public:
     explicit Unit(const QString & unitID, Player* pOwner, bool aquireId, GameMap* pMap);
     virtual ~Unit();
     /**
+     * @brief render only draws the object if it's on the screen
+     */
+    virtual void render(const oxygine::RenderState& parentRS) override;
+    /**
+     * @brief update objects outside of the screen don't update their animations
+     */
+    virtual void update(const oxygine::UpdateState& us) override;
+    /**
      * @brief setTerrain
      * @param pTerrain smart pointer to the terrain this building is placed on
      */
@@ -1276,6 +1284,9 @@ private:
      * @brief m_aiCache
      */
     std::vector<qint32> m_aiCache;
+private:
+    quint32 m_lastRenderFrame{0};
+    qint64 m_lastUpdateTime{-1};
 };
 
 Q_DECLARE_INTERFACE(Unit, "Unit");

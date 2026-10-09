@@ -512,6 +512,16 @@ private:
      */
     std::vector<QPoint> m_updatePoints;
     /**
+     * @brief m_supportTargetCache possible attacks of own units, valid until the state of the match changes
+     */
+    mutable std::map<Unit*, std::vector<CoreAI::DamageData>> m_supportTargetCache;
+    mutable quint64 m_supportTargetVersion{0};
+    /**
+     * @brief m_counterSpreadCache how much an enemy reduces its counter damage against a unit, cause it has other targets
+     */
+    std::map<std::pair<Unit*, Unit*>, qreal> m_counterSpreadCache;
+    quint64 m_counterSpreadVersion{0};
+    /**
      * @brief m_productionData
      */
     std::vector<ProductionData> m_productionData;

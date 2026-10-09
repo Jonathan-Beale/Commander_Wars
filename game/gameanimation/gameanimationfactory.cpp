@@ -83,7 +83,7 @@ spGameAnimation GameAnimationFactory::createSpAnimation(GameMap* pMap, qint32 x,
     spGameAnimation animation = MemoryManagement::create<GameAnimation>(frameTime, pMap);
     if (mapPosition)
     {
-        animation->setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+        animation->setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
     }
     else
     {
@@ -112,7 +112,7 @@ spGameAnimation GameAnimationFactory::createGlobalSpAnimation(GameMap* pMap, qin
     animation->setGlobal(true);
     if (mapPosition)
     {
-        animation->setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+        animation->setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
     }
     else
     {

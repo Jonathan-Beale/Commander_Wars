@@ -3,6 +3,7 @@
 #include "resource_management/movementtablemanager.h"
 
 #include "coreengine/interpreter.h"
+#include "coreengine/hexgrid.h"
 
 #include "game/player.h"
 #include "game/gamemap.h"
@@ -171,36 +172,11 @@ std::vector<QPoint> UnitPathFindingSystem::getClosestReachableMovePath(QPoint ta
             else
             {
                 // check surrounding nodes
-                for (qint32 i = 0; i < 4; i++)
+                const qint32 neighbourCount = HexGrid::neighbourCount();
+                for (qint32 i = 0; i < neighbourCount; i++)
                 {
-                    QVector4D test;
-                    switch (i)
-                    {
-                        case 0:
-                        {
-                            test = QVector4D(currentNode.x() + 1, currentNode.y(),
-                                             currentNode.x(), currentNode.y());
-                            break;
-                        }
-                        case 1:
-                        {
-                            test = QVector4D(currentNode.x() - 1, currentNode.y(),
-                                             currentNode.x(), currentNode.y());
-                            break;
-                        }
-                        case 2:
-                        {
-                            test = QVector4D(currentNode.x(), currentNode.y() + 1,
-                                             currentNode.x(), currentNode.y());
-                            break;
-                        }
-                        default:
-                        {
-                            test = QVector4D(currentNode.x(), currentNode.y() - 1,
-                                             currentNode.x(), currentNode.y());
-                            break;
-                        }
-                    }
+                    QVector4D test(currentNode.x() + HexGrid::neighbours[i].x(), currentNode.y() + HexGrid::neighbours[i].y(),
+                                   currentNode.x(), currentNode.y());
                     qint32 testCost = getTargetCosts(test.x(), test.y());
                     // add next node if it's more expensive and not added
                     if (!direct &&

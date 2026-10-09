@@ -1,4 +1,6 @@
+#include "resource_management/movementtablemanager.h"
 #include "ai/coreai.h"
+#include "coreengine/perftrace.h"
 #include "ai/targetedunitpathfindingsystem.h"
 #include "ai/aiprocesspipe.h"
 
@@ -323,8 +325,48 @@ double CoreAI::getInitValue(QString name) const
     return getIniValue(name, 0.0);
 }
 
+bool CoreAI::mapHasMissileBuilding()
+{
+    static quint64 checkedVersion = std::numeric_limits<quint64>::max();
+    static GameMap* pCheckedMap = nullptr;
+    static bool hasMissile = true;
+    if (m_pMap == nullptr)
+    {
+        return false;
+    }
+    const quint64 version = MovementTableManager::getTerrainLayoutVersion();
+    if (version != checkedVersion || pCheckedMap != m_pMap)
+    {
+        hasMissile = false;
+        const qint32 width = m_pMap->getMapWidth();
+        const qint32 heigth = m_pMap->getMapHeight();
+        for (qint32 x = 0; x < width && !hasMissile; ++x)
+        {
+            for (qint32 y = 0; y < heigth; ++y)
+            {
+                Building* pBuilding = m_pMap->getTerrain(x, y)->getBuilding();
+                if (pBuilding != nullptr && pBuilding->isMissile())
+                {
+                    hasMissile = true;
+                    break;
+                }
+            }
+        }
+        checkedVersion = version;
+        pCheckedMap = m_pMap;
+    }
+    return hasMissile;
+}
+
 void CoreAI::nextAction()
-{    
+{
+    // only the ai of the current player writes marks: the calls of the other ai's arrive while the current one
+    // is working and would cut its times into pieces.
+    const bool traced = m_pMap != nullptr && m_pPlayer == m_pMap->getCurrentPlayer() && !m_processing;
+    if (traced)
+    {
+        PerfTrace::mark("ai: next action requested");
+    }
     // check if it's our turn
     if (!m_processing)
     {
@@ -332,7 +374,9 @@ void CoreAI::nextAction()
         if (m_pMenu != nullptr &&
             m_pMap != nullptr &&
             m_pPlayer == m_pMap->getCurrentPlayer() &&
-            m_pMenu->getGameStarted())
+            m_pMenu->getGameStarted() &&
+            (m_pMenu->getActionPerformer() == nullptr ||
+             m_pMenu->getActionPerformer()->simultaneousAiMayAct(m_pPlayer)))
         {
             if (m_pause)
             {
@@ -343,6 +387,7 @@ void CoreAI::nextAction()
             {
                 m_pauseTimer.stop();
                 CONSOLE_PRINT("CoreAI::nextAction for player " + QString::number(m_pMap->getCurrentPlayer()->getPlayerID()) + " for ai " + m_aiName, GameConsole::eDEBUG);
+                PerfTrace::mark("ai: predefined ai");
                 if (!processPredefinedAi())
                 {
                     AI_CONSOLE_PRINT("Processing ai specific behaviour", GameConsole::eDEBUG);
@@ -352,6 +397,10 @@ void CoreAI::nextAction()
             }
         }
         m_processing = false;
+        if (traced)
+        {
+            PerfTrace::mark("ai: next action end");
+        }
     }
     else
     {
@@ -544,9 +593,9 @@ void CoreAI::createMovementMap(spQmlVectorBuilding & pBuildings, spQmlVectorBuil
         {
             for (qint32 y = 0; y < heigth; y++)
             {
-                if (std::get<1>(m_MoveCostMap[x][y]) == false)
+                if (std::get<1>(m_MoveCostMap[HexGrid::wrapX(x)][y]) == false)
                 {
-                    std::get<0>(m_MoveCostMap[x][y]) = 0.0f;
+                    std::get<0>(m_MoveCostMap[HexGrid::wrapX(x)][y]) = 0.0f;
                 }
             }
         }
@@ -587,9 +636,9 @@ void CoreAI::addMovementMap(Building* pBuilding, float damage)
                         if ((m_MoveCostMap.size() > point.x() && point.x() >= 0) &&
                             (m_MoveCostMap[point.x()].size() > point.y() && point.y() >= 0))
                         {
-                            if (std::get<1>(m_MoveCostMap[point.x()][point.y()]) == false)
+                            if (std::get<1>(m_MoveCostMap[HexGrid::wrapX(point.x())][point.y()]) == false)
                             {
-                                std::get<0>(m_MoveCostMap[point.x()][point.y()]) += damage;
+                                std::get<0>(m_MoveCostMap[HexGrid::wrapX(point.x())][point.y()]) += damage;
                             }
                         }
                     }
@@ -699,14 +748,55 @@ void CoreAI::getAttackTargets(Unit* pUnit, spGameAction & pAction, UnitPathFindi
     {        
         if (m_pMap != nullptr)
         {
+            // Asking the scripts of the fire action for each field a unit can reach is slow. Most fields have nothing
+            // close which could be attacked at all: no other unit and no terrain or building with hp.
+            // The range includes some spare fields for fire range boni of single fields.
+            static const bool skipEmptyFields = !qEnvironmentVariableIsSet("COW_NO_AI_FIRE_PREFILTER");
+            static const bool verifyPrefilter = qEnvironmentVariableIsSet("COW_VERIFY_AI_FIRE_PREFILTER");
+            const qint32 checkRange = pUnit->getMaxRange(pUnit->getPosition()) + 2;
+            auto mayHaveTarget = [this, pUnit, checkRange](const QPoint & field)
+            {
+                for (qint32 dy = -checkRange; dy <= checkRange; ++dy)
+                {
+                    for (qint32 dx = -checkRange; dx <= checkRange; ++dx)
+                    {
+                        const qint32 x = field.x() + dx;
+                        const qint32 y = field.y() + dy;
+                        if (GlobalUtils::getDistance(QPoint(0, 0), QPoint(dx, dy)) <= checkRange &&
+                            m_pMap->onMap(x, y))
+                        {
+                            Terrain* pField = m_pMap->getTerrain(x, y);
+                            Unit* pOther = pField->getUnit();
+                            Building* pBuilding = pField->getBuilding();
+                            // only enemies can be attacked. Hidden enemies count as well, so nothing gets skipped by mistake.
+                            if ((pOther != nullptr && pOther != pUnit && pUnit->getOwner()->isEnemyUnit(pOther)) ||
+                                pField->getHp() > 0 ||
+                                (pBuilding != nullptr && pBuilding->getHp() > 0))
+                            {
+                                return true;
+                            }
+                        }
+                    }
+                }
+                return false;
+            };
             auto targets = pPfs->getAllNodePointsFast(maxDistance);
             for (auto & target : targets)
             {
                 Terrain* pTerrain = m_pMap->getTerrain(target.x(), target.y());
-                if (pTerrain->getUnit() == nullptr)
+                if (pTerrain->getUnit() == nullptr &&
+                    (!skipEmptyFields || mayHaveTarget(target)))
                 {
                     pAction->setMovepath(QVector<QPoint>(1, target), 0);
                     getAttacksFromField(pUnit, pAction, ret, moveTargetFields);
+                }
+                else if (pTerrain->getUnit() == nullptr && verifyPrefilter)
+                {
+                    // test mode: a skipped field must not have any attack
+                    const auto count = ret.size();
+                    pAction->setMovepath(QVector<QPoint>(1, target), 0);
+                    getAttacksFromField(pUnit, pAction, ret, moveTargetFields);
+                    CONSOLE_PRINT(QString(ret.size() == count ? "FIREPREFILTER ok" : "FIREPREFILTER missed attack of ") + pUnit->getUnitID(), GameConsole::eERROR);
                 }
             }
         }
@@ -923,7 +1013,7 @@ void CoreAI::addMenuItemData(spGameAction & pGameAction, const QString & itemID,
 void CoreAI::addSelectedFieldData(spGameAction & pGameAction, const QPoint & point)
 {
     AI_CONSOLE_PRINT("CoreAI::addSelectedFieldData()", GameConsole::eDEBUG);
-    pGameAction->writeDataInt32(point.x());
+    pGameAction->writeDataInt32(HexGrid::wrapX(point.x()));
     pGameAction->writeDataInt32(point.y());
     pGameAction->setInputStep(pGameAction->getInputStep() + 1);
 }
@@ -2043,12 +2133,37 @@ void CoreAI::appendTerrainBuildingAttackTargets(Unit* pUnit, spQmlVectorBuilding
     if (m_enableNeutralTerrainAttack)
     {
         // find terrains
-        qint32 width = m_pMap->getMapWidth();
-        qint32 heigth = m_pMap->getMapHeight();
-        for (qint32 x = 0; x < width; x++)
+        // Only terrains or buildings with hp can be attacked. They are rare, so their fields are collected once
+        // instead of checking the whole map for each unit. The list is created again when a terrain or building changes.
+        static const bool useTerrainCache = !qEnvironmentVariableIsSet("COW_NO_AI_TERRAIN_TARGET_CACHE");
+        const quint64 layoutVersion = MovementTableManager::getTerrainLayoutVersion();
+        if (!useTerrainCache || m_attackableTerrainVersion != layoutVersion || m_pAttackableTerrainMap != m_pMap)
         {
-            for (qint32 y = 0; y < heigth; y++)
+            m_attackableTerrains.clear();
+            qint32 width = m_pMap->getMapWidth();
+            qint32 heigth = m_pMap->getMapHeight();
+            for (qint32 x = 0; x < width; x++)
             {
+                for (qint32 y = 0; y < heigth; y++)
+                {
+                    Terrain* pTerrain = m_pMap->getTerrain(x, y);
+                    Building* pBuilding = pTerrain->getBuilding();
+                    if (!useTerrainCache ||
+                        pTerrain->getHp() > 0 ||
+                        (pBuilding != nullptr && pBuilding->getHp() > 0))
+                    {
+                        m_attackableTerrains.push_back(QPoint(x, y));
+                    }
+                }
+            }
+            m_attackableTerrainVersion = layoutVersion;
+            m_pAttackableTerrainMap = m_pMap;
+        }
+        {
+            for (const auto & terrainPos : m_attackableTerrains)
+            {
+                const qint32 x = terrainPos.x();
+                const qint32 y = terrainPos.y();
                 Terrain* pTerrain = m_pMap->getTerrain(x, y);
                 if (isAttackOnTerrainAllowed(pTerrain, pUnit->getEnvironmentDamage(pTerrain->getID())))
                 {
@@ -2356,7 +2471,38 @@ bool CoreAI::useBuilding(spQmlVectorBuilding & pBuildings, spQmlVectorUnit & pUn
         bool restartBuildingScan = false;
         if (!buildingActionsLoaded[buildingIndex])
         {
-            buildingActions[buildingIndex] = pBuilding->getActionList();
+            // The actions of a building are asked from the scripts of the building and of all co's.
+            // This runs for all buildings before each action of the ai, so the lists are kept for the turn.
+            // They are asked again if a co changes its power mode, which may add actions.
+            static const bool useActionCache = !qEnvironmentVariableIsSet("COW_NO_AI_BUILDING_ACTION_CACHE");
+            quint64 stamp = MovementTableManager::getTerrainLayoutVersion() * 1000003 +
+                            static_cast<quint64>(m_pMap->getCurrentDay()) * 131 +
+                            static_cast<quint64>(m_pMap->getCurrentPlayer()->getPlayerID());
+            for (qint32 player = 0; player < m_pMap->getPlayerCount(); ++player)
+            {
+                for (qint32 co = 0; co < 2; ++co)
+                {
+                    CO* pCO = m_pMap->getPlayer(player)->getCO(co);
+                    stamp = stamp * 7 + (pCO != nullptr ? static_cast<quint64>(pCO->getPowerMode()) + 1 : 0);
+                }
+            }
+            if (m_buildingActionStamp != stamp)
+            {
+                m_buildingActionCache.clear();
+                m_buildingActionStamp = stamp;
+            }
+            auto cachedActions = m_buildingActionCache.find(pBuilding.get());
+            if (useActionCache &&
+                cachedActions != m_buildingActionCache.end() &&
+                cachedActions->second.first == pBuilding->getOwner())
+            {
+                buildingActions[buildingIndex] = cachedActions->second.second;
+            }
+            else
+            {
+                buildingActions[buildingIndex] = pBuilding->getActionList();
+                m_buildingActionCache.insert_or_assign(pBuilding.get(), std::make_pair(pBuilding->getOwner(), buildingActions[buildingIndex]));
+            }
             buildingActionsLoaded[buildingIndex] = true;
             for (const auto & action : buildingActions[buildingIndex])
             {
@@ -2374,7 +2520,9 @@ bool CoreAI::useBuilding(spQmlVectorBuilding & pBuildings, spQmlVectorUnit & pUn
             {
                 if (action != ACTION_BUILD_UNITS)
                 {
+                    PerfTrace::mark("ai: ub try " + action);
                     const BuildingActionResult result = tryBuildingAction(pBuilding.get(), action, pUnits, pBuildings, remainingBuildingScanRestarts);
+                    PerfTrace::mark("ai: ub after try");
                     if (result == BuildingActionResult::Performed)
                     {
                         return true;
@@ -3277,8 +3425,8 @@ void CoreAI::deserializeObjectVersion(QDataStream &stream, qint32 version)
             for (qint32 y = 0; y < ysize; y++)
             {
                 m_MoveCostMap[x].push_back(std::tuple<qint32, bool>(0, false));
-                stream >> std::get<0>(m_MoveCostMap[x][y]);
-                stream >> std::get<1>(m_MoveCostMap[x][y]);
+                stream >> std::get<0>(m_MoveCostMap[HexGrid::wrapX(x)][y]);
+                stream >> std::get<1>(m_MoveCostMap[HexGrid::wrapX(x)][y]);
             }
         }
     }

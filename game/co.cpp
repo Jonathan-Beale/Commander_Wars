@@ -1,3 +1,6 @@
+#include <unordered_map>
+#include <QMutex>
+#include "resource_management/movementtablemanager.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/audiomanager.h"
 #include "coreengine/globalutils.h"
@@ -817,6 +820,72 @@ qint32 CO::getMovementcostModifier(Unit* pUnit, QPoint position)
 {
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString function1 = "getMovementcostModifier";
+    // called for each field of each path search. Most co's and perks keep the hook of the base object
+    // which returns 0, so those calls are skipped.
+    static const QString baseCo = "CO";
+    static const QString basePerk = "CO_PERK";
+    bool required = false;
+    for (const auto & perk : std::as_const(m_perkList))
+    {
+        if (!pInterpreter->isDefaultFunction(perk, perk == m_coID ? baseCo : basePerk, function1))
+        {
+            required = true;
+            break;
+        }
+    }
+    if (!required)
+    {
+        return 0;
+    }
+    // A path search asks for the same unit and field once for each direction and the ai repeats its searches.
+    // The result is reused until the state of the match changes: any action, a new turn or a power.
+    struct CachedModifier
+    {
+        quintptr owner{0};
+        size_t unitId{0};
+        qint32 modifier{0};
+    };
+    struct CacheKey
+    {
+        quintptr co;
+        quintptr unit;
+        qint32 x;
+        qint32 y;
+        bool operator==(const CacheKey & other) const
+        {
+            return co == other.co && unit == other.unit && x == other.x && y == other.y;
+        }
+    };
+    struct CacheKeyHash
+    {
+        size_t operator()(const CacheKey & key) const
+        {
+            return qHashMulti(0, key.co, key.unit, key.x, key.y);
+        }
+    };
+    static std::unordered_map<CacheKey, CachedModifier, CacheKeyHash> cache;
+    static quint64 cacheVersion = 0;
+    static QMutex cacheMutex;
+    static const bool useCache = !qEnvironmentVariableIsSet("COW_NO_CO_MOVE_CACHE");
+    const CacheKey key{reinterpret_cast<quintptr>(this), reinterpret_cast<quintptr>(pUnit), position.x(), position.y()};
+    const quintptr owner = pUnit != nullptr ? reinterpret_cast<quintptr>(pUnit->getOwner()) : 0;
+    const size_t unitId = pUnit != nullptr ? qHash(pUnit->getUnitID()) : 0;
+    const quint64 version = MovementTableManager::getMovementStateVersion();
+    if (useCache)
+    {
+        QMutexLocker locker(&cacheMutex);
+        if (cacheVersion != version)
+        {
+            cache.clear();
+            cacheVersion = version;
+        }
+        auto iter = cache.find(key);
+        // the address of a deleted unit may be used again by another unit
+        if (iter != cache.end() && iter->second.owner == owner && iter->second.unitId == unitId)
+        {
+            return iter->second.modifier;
+        }
+    }
     QJSValueList args({m_jsThis,
                        JsThis::getJsThis(pUnit),
                        position.x(),
@@ -825,13 +894,22 @@ qint32 CO::getMovementcostModifier(Unit* pUnit, QPoint position)
     qint32 ergValue = 0;
     for (const auto & perk : std::as_const(m_perkList))
     {
-        if (isJsFunctionEnabled(perk))
+        if (isJsFunctionEnabled(perk) &&
+            !pInterpreter->isDefaultFunction(perk, perk == m_coID ? baseCo : basePerk, function1))
         {
             QJSValue erg = pInterpreter->doFunction(perk, function1, args);
             if (erg.isNumber())
             {
                 ergValue += erg.toInt();
             }
+        }
+    }
+    if (useCache && version == MovementTableManager::getMovementStateVersion())
+    {
+        QMutexLocker locker(&cacheMutex);
+        if (cacheVersion == version)
+        {
+            cache[key] = CachedModifier{owner, unitId, ergValue};
         }
     }
     return ergValue;
@@ -1356,6 +1434,11 @@ GameEnums::PowerMode CO::getPowerMode() const
 
 void CO::setPowerMode(const GameEnums::PowerMode PowerMode)
 {
+    if (m_PowerMode != PowerMode)
+    {
+        // movement hooks of co's depend on the power mode
+        MovementTableManager::movementStateChanged();
+    }
     m_PowerMode = PowerMode;
 }
 
@@ -1496,7 +1579,7 @@ bool CO::inCORange(QPoint position, Unit* pUnit)
     }
     else if (m_pCOUnit.get() != nullptr)
     {
-        if ((qAbs(m_pCOUnit->Unit::getX() - position.x()) + qAbs(m_pCOUnit->Unit::getY() - position.y())) <= getCORange())
+        if (GlobalUtils::getDistance(m_pCOUnit->Unit::getX(), m_pCOUnit->Unit::getY(), position.x(), position.y()) <= getCORange())
         {
             return true;
         }

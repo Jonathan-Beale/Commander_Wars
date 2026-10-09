@@ -48,7 +48,17 @@ void VirtualPaths::setSearchPath(const QString& userPath, const QStringList& mod
     }
 
 #ifdef DEPLOY_RESOURCES_AS_FOLDER
-    m_searchPath.append({ QCoreApplication::applicationDirPath() });
+    // The folder of the executable is often the current folder or the user path, which are in the list already.
+    // Adding it twice finds every file twice: ui files get created twice and the map selection lists all entries twice.
+    const QString applicationPath = normalizedPath(QFileInfo(QCoreApplication::applicationDirPath()));
+    bool applicationPathKnown = !userPath.isEmpty() && applicationPath == normalizedPath(QFileInfo(userPath));
+#ifndef USEAPPCONFIGPATH
+    applicationPathKnown = applicationPathKnown || applicationPath == normalizedPath(QFileInfo("."));
+#endif
+    if (!applicationPathKnown)
+    {
+        m_searchPath.append({ QCoreApplication::applicationDirPath() });
+    }
 
 #ifdef __linux__
     m_searchPath.append({ QCoreApplication::applicationDirPath() + "/../share/commander_wars" });

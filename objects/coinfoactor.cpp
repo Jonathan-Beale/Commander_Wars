@@ -10,6 +10,9 @@
 #include "resource_management/gamemanager.h"
 #include "resource_management/coperkmanager.h"
 
+#include "game/building.h"
+#include "game/unit.h"
+#include "resource_management/buildingspritemanager.h"
 #include "game/gamemap.h"
 
 #include "objects/base/label.h"
@@ -169,6 +172,12 @@ COInfoActor::COInfoActor(GameMap* pMap, qint32 width)
     m_PerkText->setHtmlText(tr("Active Perks"));
     m_PerkText->setX(10);
     addChild(m_PerkText);
+
+    m_COUnitText = MemoryManagement::create<oxygine::TextField>();
+    m_COUnitText->setStyle(style);
+    m_COUnitText->setHtmlText(tr("Special Units"));
+    m_COUnitText->setX(10);
+    addChild(m_COUnitText);
 
     m_powerProgress = MemoryManagement::create<oxygine::TextField>();
     m_powerProgress->setStyle(style);
@@ -382,6 +391,7 @@ void COInfoActor::showCO(spCO pCO, spPlayer pPlayer)
     y += m_PerkText->getTextRect().height() + 10;
     showPerks(pCO, y);
     y += 50;
+    showCOUnits(pCO, pPlayer, y);
 
     for (qint32 i = 0; i < m_UnitDataActors.size(); i++)
     {
@@ -672,6 +682,78 @@ void COInfoActor::showPerks(spCO pCO, qint32 & y)
             }
         }
     }
+}
+
+void COInfoActor::showCOUnits(spCO pCO, spPlayer pPlayer, qint32 & y)
+{
+    for (qint32 i = 0; i < m_COUnitActors.size(); i++)
+    {
+        m_COUnitActors[i]->detachAndRemove();
+    }
+    m_COUnitActors.clear();
+    QStringList coUnits;
+    if (pCO.get() != nullptr)
+    {
+        // the co tells for each building which special units it can build there
+        static const QStringList buildingIds = {"HQ", "FORTHQ", "TOWN", "FACTORY", "AIRPORT", "HARBOUR", "AMPHIBIOUSFACTORY",
+                                                "LABOR", "PIPESTATION", "TEMPORARY_AIRPORT", "TEMPORARY_HARBOUR"};
+        BuildingSpriteManager* pBuildingSpriteManager = BuildingSpriteManager::getInstance();
+        UnitSpriteManager* pUnitSpriteManager = UnitSpriteManager::getInstance();
+        for (const auto & buildingId : buildingIds)
+        {
+            if (pBuildingSpriteManager->exists(buildingId))
+            {
+                spBuilding pBuilding = MemoryManagement::create<Building>(buildingId, pCO->getMap());
+                const QStringList units = pCO->getCOUnits(pBuilding.get());
+                for (const auto & unitId : units)
+                {
+                    if (!coUnits.contains(unitId) && pUnitSpriteManager->exists(unitId))
+                    {
+                        coUnits.append(unitId);
+                    }
+                }
+            }
+        }
+    }
+    m_COUnitText->setVisible(!coUnits.isEmpty());
+    if (coUnits.isEmpty())
+    {
+        return;
+    }
+    m_COUnitText->setPosition(10, y);
+    y += m_COUnitText->getTextRect().height() + 10;
+    oxygine::TextStyle style = oxygine::TextStyle(FontManager::getMainFont24());
+    style.hAlign = oxygine::TextStyle::HALIGN_LEFT;
+    qint32 x = 10;
+    const qint32 width = 300;
+    for (const auto & unitId : std::as_const(coUnits))
+    {
+        oxygine::spActor unitActor = MemoryManagement::create<oxygine::Actor>();
+        spUnit pUnit = MemoryManagement::create<Unit>(unitId, pPlayer.get(), false, pCO->getMap());
+        pUnit->setScale(2.0f);
+        pUnit->setPosition(0, 0);
+        unitActor->addChild(pUnit);
+        spLabel pLabel = MemoryManagement::create<Label>(250);
+        pLabel->setStyle(style);
+        pLabel->setHtmlText(pUnit->getName());
+        pLabel->setPosition(GameMap::getImageSize() * 2 + 10, 10);
+        unitActor->addChild(pLabel);
+        unitActor->setPosition(x, y);
+        unitActor->setSize(width - 10, GameMap::getImageSize() * 2);
+        addChild(unitActor);
+        unitActor->addClickListener([this, unitId](oxygine::Event*)
+        {
+            emit sigShowLink(unitId);
+        });
+        m_COUnitActors.append(unitActor);
+        x += width;
+        if (x + width > m_pCurrentCO->getX() - 50)
+        {
+            x = 10;
+            y += GameMap::getImageSize() * 2 + 10;
+        }
+    }
+    y += GameMap::getImageSize() * 2 + 30;
 }
 
 void COInfoActor::createStrengthBar(oxygine::spActor pActor, qint32 bonus, qint32 y)

@@ -1,4 +1,8 @@
+#include <QHash>
+#include <QThread>
+#include <QElapsedTimer>
 #include <QObject>
+#include "coreengine/perftrace.h"
 #include <QProcess>
 #include <QDir>
 #ifdef GRAPHICSUPPORT
@@ -20,8 +24,73 @@
 #include "updater/gameupdater.h"
 #endif
 
+#ifdef GRAPHICSUPPORT
+using ApplicationBase = QApplication;
+#else
+using ApplicationBase = QCoreApplication;
+#endif
+/**
+ * @brief benchmarking: with COW_PERF_TRACE each event which takes several milliseconds is written to the trace
+ * as "event;<class of the receiver>;<event type>;<ms>", so time spend in queued calls and timers shows up.
+ */
+class TracedApplication final : public ApplicationBase
+{
+public:
+    TracedApplication(int & argc, char** argv)
+        : ApplicationBase(argc, argv)
+    {
+    }
+    virtual bool notify(QObject* receiver, QEvent* event) override
+    {
+        static thread_local qint32 m_depth = 0;
+        if (!PerfTrace::enabled() || m_depth > 0)
+        {
+            return ApplicationBase::notify(receiver, event);
+        }
+        const QString name = receiver != nullptr ? QString(receiver->metaObject()->className()) : QString("null");
+        const qint32 type = static_cast<qint32>(event->type());
+        ++m_depth;
+        QElapsedTimer timer;
+        timer.start();
+        const bool ret = ApplicationBase::notify(receiver, event);
+        --m_depth;
+        const qint64 elapsed = timer.elapsed();
+        if (QThread::currentThread() == thread())
+        {
+            // short events are summed up and written as "eventsum;<class>;<type>;<count>;<ms>" every two seconds
+            static QHash<QString, QPair<qint64, qint64>> sums;
+            static QElapsedTimer sumTimer;
+            auto & sum = sums[name + ";" + QString::number(type)];
+            sum.first += 1;
+            sum.second += timer.nsecsElapsed();
+            if (!sumTimer.isValid())
+            {
+                sumTimer.start();
+            }
+            else if (sumTimer.elapsed() > 2000)
+            {
+                sumTimer.restart();
+                for (auto iter = sums.constBegin(); iter != sums.constEnd(); ++iter)
+                {
+                    if (iter.value().second > 20000000)
+                    {
+                        PerfTrace::mark("eventsum;" + iter.key() + ";" + QString::number(iter.value().first) + ";" + QString::number(iter.value().second / 1000000));
+                    }
+                }
+                sums.clear();
+            }
+        }
+        if (elapsed >= 3)
+        {
+            PerfTrace::mark("event;" + name + (QThread::currentThread() == thread() ? "" : " (other thread)") + ";" + QString::number(type) + ";" + QString::number(elapsed));
+        }
+        return ret;
+    }
+};
+
 int main(qint32 argc, char* argv[])
 {
+    PerfTrace::mark("main");
     if (!qputenv("QV4_JIT_CALL_THRESHOLD", "1") ||
         !qputenv("QV4_GC_TIMELIMIT", "20"))
     {
@@ -29,11 +98,7 @@ int main(qint32 argc, char* argv[])
     }
 
 
-#ifdef GRAPHICSUPPORT
-    QApplication app(argc, argv);
-#else
-    QCoreApplication app(argc, argv);
-#endif
+    TracedApplication app(argc, argv);
     GlobalUtils::setup();
     app.setApplicationName("Commander Wars");
     app.setApplicationVersion(GameVersion().toString());
@@ -42,7 +107,9 @@ int main(qint32 argc, char* argv[])
     qputenv("PULSE_PROP_application.name", appName);
     qputenv("PULSE_PROP_application.icon_name", QByteArrayLiteral("commander_wars"));
     QThread::currentThread()->setPriority(QThread::Priority::NormalPriority);
+    PerfTrace::mark("QApplication created");
     Mainapp window;
+    PerfTrace::mark("Mainapp created");
     window.setTitle("Commander Wars");
     {
         Settings* pSettings = Settings::getInstance();

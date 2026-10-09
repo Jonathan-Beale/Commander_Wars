@@ -64,6 +64,24 @@ QStringList MovementTableManager::getMovementTypes()
 
 qint32 MovementTableManager::getBaseMovementPoints(const QString & movementID, Terrain* pTerrain, Terrain* pCurrentTerrain, Unit* pUnit, bool trapChecking)
 {
+    QMutexLocker locker(&m_baseCostCacheMutex);
+    BaseCostCache & cache = m_baseCostCache[movementID];
+    if (cache.supportsCache < 0)
+    {
+        // COW_NO_MOVE_COST_CACHE switches the cache off to compare timings
+        static const bool cacheDisabled = qEnvironmentVariableIsSet("COW_NO_MOVE_COST_CACHE");
+        cache.supportsCache = (!cacheDisabled && getSupportsFastPfs(movementID)) ? 1 : 0;
+    }
+    const QPair<quintptr, quintptr> key(reinterpret_cast<quintptr>(pTerrain),
+                                        reinterpret_cast<quintptr>(pUnit != nullptr ? pUnit->getOwner() : nullptr) | (trapChecking ? 1u : 0u));
+    if (cache.supportsCache == 1)
+    {
+        auto iter = cache.costs.constFind(key);
+        if (iter != cache.costs.constEnd())
+        {
+            return iter.value();
+        }
+    }
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString function1 = "getMovementpoints";
     QJSValueList args({JsThis::getJsThis(pTerrain),
@@ -72,13 +90,49 @@ qint32 MovementTableManager::getBaseMovementPoints(const QString & movementID, T
                        trapChecking,
                        GameMap::getMapJsThis(pCurrentTerrain->getMap())});
     QJSValue ret = pInterpreter->doFunction(movementID, function1, args);
+    qint32 costs = -1;
     if (ret.isNumber())
     {
-        return ret.toInt();
+        costs = ret.toInt();
     }
-    else
+    if (cache.supportsCache == 1)
     {
-        return -1;
+        cache.costs.insert(key, costs);
+    }
+    return costs;
+}
+
+void MovementTableManager::clearBaseMovementPointsCache()
+{
+    m_movementStateVersion.fetchAndAddRelaxed(1);
+    if (!created())
+    {
+        return;
+    }
+    MovementTableManager* pManager = getInstance();
+    QMutexLocker locker(&pManager->m_baseCostCacheMutex);
+    for (auto & cache : pManager->m_baseCostCache)
+    {
+        cache.costs.clear();
+    }
+}
+
+void MovementTableManager::clearBaseMovementPointsCache(const Terrain* pTerrain)
+{
+    m_movementStateVersion.fetchAndAddRelaxed(1);
+    if (!created())
+    {
+        return;
+    }
+    MovementTableManager* pManager = getInstance();
+    QMutexLocker locker(&pManager->m_baseCostCacheMutex);
+    const quintptr terrainKey = reinterpret_cast<quintptr>(pTerrain);
+    for (auto & cache : pManager->m_baseCostCache)
+    {
+        cache.costs.removeIf([terrainKey](const auto & item)
+        {
+            return item.key().first == terrainKey;
+        });
     }
 }
 

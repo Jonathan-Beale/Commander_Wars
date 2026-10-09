@@ -1,6 +1,7 @@
 #include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
 
 #include "objects/loadingscreen.h"
+#include "coreengine/perftrace.h"
 
 #include "coreengine/mainapp.h"
 #include "coreengine/gameconsole.h"
@@ -82,6 +83,7 @@ void LoadingScreen::show()
 
 void LoadingScreen::setProgress(QString workText, qint32 value)
 {
+    PerfTrace::mark("progress: " + workText);
     if (oxygine::Stage::getStage().get() != nullptr)
     {
         Mainapp* pApp = Mainapp::getInstance();

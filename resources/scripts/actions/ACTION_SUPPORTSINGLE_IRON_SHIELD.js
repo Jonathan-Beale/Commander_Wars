@@ -41,10 +41,7 @@ var Constructor = function()
     this.getDefenseFields = function(action, map)
     {
         var targetField = action.getActionTarget();
-        var targetFields = [Qt.point(targetField.x + 1, targetField.y),
-                            Qt.point(targetField.x - 1, targetField.y),
-                            Qt.point(targetField.x,     targetField.y - 1),
-                            Qt.point(targetField.x,     targetField.y + 1)];
+        var targetFields = ACTION.getNeighbourFields(targetField);
         // check all neighbour terrains
         var unit = action.getTargetUnit();
         var ret = [];

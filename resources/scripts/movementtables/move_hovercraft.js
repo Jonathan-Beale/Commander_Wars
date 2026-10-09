@@ -75,6 +75,7 @@ var Constructor = function()
                                 ["FORTHQ", 1],
                                 ["FIELD_BASE", 1],];
 
+    this.seaCheckFields = null;
     this.getMovementpoints = function(terrain, unit, currentTerrain, trapChecking = false, map)
     {
         var id = terrain.getID();
@@ -106,12 +107,25 @@ var Constructor = function()
         {
             // check all fields we can attack
             var valid = false;
-            var fields = globals.getCircle(1, 2);
-            var size = fields.size();
+            // this is called for a lot of fields. The offsets are stored once, instead of creating a new list for each call.
+            if (MOVE_HOVERCRAFT.seaCheckFields === null)
+            {
+                var circle = globals.getCircle(1, 2);
+                var offsets = [];
+                for (var i2 = 0; i2 < circle.size(); i2++)
+                {
+                    offsets.push([circle.at(i2).x, circle.at(i2).y]);
+                }
+                MOVE_HOVERCRAFT.seaCheckFields = offsets;
+            }
+            var fields = MOVE_HOVERCRAFT.seaCheckFields;
+            var size = fields.length;
+            var terrainX = terrain.getX();
+            var terrainY = terrain.getY();
             for (var i = 0; i < size; i++)
             {
-                var x = fields.at(i).x + terrain.getX();
-                var y = fields.at(i).y + terrain.getY();
+                var x = fields[i][0] + terrainX;
+                var y = fields[i][1] + terrainY;
                 if (map.onMap(x, y))
                 {
                     var areaTerrain = map.getTerrain(x, y);

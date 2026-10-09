@@ -83,6 +83,8 @@ var IngameInfoBar =
     UnitMovepointsLabelIdx : 10,
     UnitVisionLabelIdx : 11,
     UnitLoadedUnitStartIdx : 12,
+    UnitRankId : "UNIT_RANK_ID",
+    UnitRankIdx : 22,
     UnitInfoObjectCount : 23,
     MaxUnitHp : 10,
     MaxShownLoadedUnits : 5,
@@ -188,6 +190,7 @@ var IngameInfoBar =
         IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitMovetypeLabelIdx] = menu.getObject(IngameInfoBar.UnitMovetypeLabelId);
         IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitMovepointsLabelIdx] = menu.getObject(IngameInfoBar.UnitMovepointsLabelId);
         IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitVisionLabelIdx] = menu.getObject(IngameInfoBar.UnitVisionLabelId);
+        IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitRankIdx] = menu.getObject(IngameInfoBar.UnitRankId);
         for (var i = 0; i < IngameInfoBar.MaxShownLoadedUnits; ++i)
         {
             IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitLoadedUnitStartIdx + i * 2] = menu.getObject(IngameInfoBar.UnitLoadedUnitBoxId + i);
@@ -455,6 +458,36 @@ var IngameInfoBar =
                 IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitAmmo2Idx].setText(qsTr("Ammo 2: ") + "-/-");
             }
             IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitAmmo2Idx].changeBar(divider, "#FFA500", IngameInfoBar.Gray);
+            // promotion progress: filled by the funds value of the damage the unit dealt
+            var rankBar = IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitRankIdx];
+            if (rankBar !== null && rankBar !== undefined)
+            {
+                var unitRank = unit.getUnitRank();
+                var rankShare = UNITRANKINGSYSTEM.getProgressShare(unit);
+                var pendingPicks = UNITRANKINGSYSTEM.getPendingPicks(unit);
+                if (unitRank < 0)
+                {
+                    rankBar.setText(UNITRANKINGSYSTEM.getName(unitRank));
+                    rankBar.changeBar(1, "#C8A000", IngameInfoBar.Gray);
+                }
+                else if (pendingPicks > 0)
+                {
+                    // the unit earned a promotion which wasn't spend yet
+                    rankBar.setText(qsTr("Promotion ready: ") + UNITRANKINGSYSTEM.getBranchSummary(unit));
+                    rankBar.changeBar(1, "#00B050", IngameInfoBar.Gray);
+                }
+                else if (rankShare < 0)
+                {
+                    rankBar.setText(UNITRANKINGSYSTEM.getBranchSummary(unit));
+                    rankBar.changeBar(1, "#C8A000", IngameInfoBar.Gray);
+                }
+                else
+                {
+                    rankBar.setText(UNITRANKINGSYSTEM.getBranchSummary(unit) + "  " + UNITRANKINGSYSTEM.getProgress(unit) + "/" +
+                                    UNITRANKINGSYSTEM.getRankCosts(unit, unitRank));
+                    rankBar.changeBar(rankShare, "#C8A000", IngameInfoBar.Gray);
+                }
+            }
             IngameInfoBar.UnitInfoObjects[IngameInfoBar.UnitOwnerLabelIdx].setHtmlText(qsTr("Player ") + (owner.getPlayerID() + 1));
             var weaponId = unit.getWeapon1ID();
             if (weaponId !== "")

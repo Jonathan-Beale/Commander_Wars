@@ -1,3 +1,4 @@
+#include "game/terrain.h"
 #include <QOpenGLFramebufferObject>
 
 #include "game/gamerecording/gamemapimagesaver.h"
@@ -43,7 +44,10 @@ void GamemapImageSaver::saveMapAsImage(QString filename, BaseGamemenu& menu)
             rs.transform.setMatrix(1 / ratio, 0, 0,
                                    0, 1 / ratio, 0,
                                    0, 0, 1);
+            // the whole map is drawn into the image, not only the part on the screen
+            Terrain::setViewClipping(false);
             pMap->render(rs);
+            Terrain::setViewClipping(true);
             oxygine::STDRenderer::getCurrent()->flush();
             oxygine::Material::null->apply();
             auto img = buffer.toImage();

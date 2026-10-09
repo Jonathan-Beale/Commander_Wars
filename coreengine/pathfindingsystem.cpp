@@ -3,6 +3,7 @@
 
 #include "coreengine/interpreter.h"
 #include "coreengine/pathfindingsystem.h"
+#include "coreengine/hexgrid.h"
 
 const qint32 PathFindingSystem::infinite = std::numeric_limits<qint32>::max();
 
@@ -24,7 +25,7 @@ PathFindingSystem::PathFindingSystem(qint32 startX, qint32 startY,
     m_height(heigth),
     m_costs(width * heigth, infinite),
     m_DirectionMap(width * heigth, Directions::Unknown),
-    m_movecosts(width * heigth, std::array<qint32, Directions::Max>({infinite, infinite, infinite, infinite}))
+    m_movecosts(width * heigth, std::array<qint32, Directions::Max>({infinite, infinite, infinite, infinite, infinite, infinite}))
 {
 #ifdef GRAPHICSUPPORT
     setObjectName("PathFindingSystem");
@@ -34,11 +35,12 @@ PathFindingSystem::PathFindingSystem(qint32 startX, qint32 startY,
 
 void PathFindingSystem::setStartPoint(qint32 startX, qint32 startY)
 {
-    m_StartPoint = QPoint(startX, startY);
+    m_StartPoint = QPoint(HexGrid::wrapX(startX), startY);
 }
 
 void PathFindingSystem::setFinishNode(qint32 x, qint32 y)
 {
+    x = HexGrid::wrapX(x);
     m_FinishNode = x + y  * m_width;
     m_FinishNodeX = x;
     m_FinishNodeY = y;
@@ -90,89 +92,23 @@ void PathFindingSystem::explore()
             setFinishNode(pCurrent.x, pCurrent.y);
             break;
         }
-        // right
-
-        for (qint32 i = 0; i < 4; i++)
+        const qint32 neighbourCount = HexGrid::neighbourCount();
+        for (qint32 i = 0; i < neighbourCount; i++)
         {
             // calculate neighbour node data
-            if (i == 0)
+            neighboursX = HexGrid::wrapX(pCurrent.x + HexGrid::neighbours[i].x());
+            neighboursY = pCurrent.y + HexGrid::neighbours[i].y();
+            if (neighboursX < 0 || neighboursX >= m_width ||
+                neighboursY < 0 || neighboursY >= m_height)
             {
-                if (pCurrent.x + 1 < m_width)
-                {
-                    neighboursIndex = pCurrent.index + 1;
-                    fieldCost = m_costs[neighboursIndex];
-                    if (fieldCost != infinite)
-                    {
-                        // skip searched fields
-                        continue;
-                    }
-                    neighboursX = pCurrent.x + 1;
-                    neighboursY = pCurrent.y;
-                }
-                else
-                {
-                    continue;
-                }
+                continue;
             }
-            else if (i == 1)
+            neighboursIndex = getIndex(neighboursX, neighboursY);
+            fieldCost = m_costs[neighboursIndex];
+            if (fieldCost != infinite)
             {
-                // left
-                if (pCurrent.x > 0)
-                {
-                    neighboursIndex = pCurrent.index - 1;
-                    fieldCost = m_costs[neighboursIndex];
-                    if (fieldCost != infinite)
-                    {
-                        // skip searched fields
-                        continue;
-                    }
-                    neighboursX = pCurrent.x - 1;
-                    neighboursY = pCurrent.y;
-                }
-                else
-                {
-                    continue;
-                }
-            }
-            else if (i == 2)
-            {
-                // bottom
-                if (pCurrent.y + 1 < m_height)
-                {
-                    neighboursIndex = pCurrent.index + m_width;
-                    fieldCost = m_costs[neighboursIndex];
-                    if (fieldCost != infinite)
-                    {
-                        // skip searched fields
-                        continue;
-                    }
-                    neighboursX = pCurrent.x;
-                    neighboursY = pCurrent.y + 1;
-                }
-                else
-                {
-                    continue;
-                }
-            }
-            else
-            {
-                // top
-                if (pCurrent.y > 0)
-                {
-                    neighboursIndex = pCurrent.index - m_width;
-                    fieldCost = m_costs[neighboursIndex];
-                    if (fieldCost != infinite)
-                    {
-                        // skip searched fields
-                        continue;
-                    }
-                    neighboursX = pCurrent.x;
-                    neighboursY = pCurrent.y - 1;
-                }
-                else
-                {
-                    continue;
-                }
+                // skip searched fields
+                continue;
             }
             // get field costs from index
             neighboursCosts = getCosts(neighboursIndex, neighboursX, neighboursY, pCurrent.x, pCurrent.y, currentCost);
@@ -188,7 +124,7 @@ void PathFindingSystem::explore()
                     // node we want to insert
                     Node workNode = Node(neighboursX, neighboursY, neighboursIndex, totalCost, newCosts,
                                          pCurrent.x, pCurrent.y,
-                                         qAbs(neighboursX - m_StartPoint.x()) + qAbs(neighboursY - m_StartPoint.y()),
+                                         HexGrid::distance(neighboursX - m_StartPoint.x(), neighboursY - m_StartPoint.y()),
                                          queueOrder++);
                     m_OpenList.push_back(workNode);
                     std::push_heap(m_OpenList.begin(), m_OpenList.end(), [](const Node& lhs, const Node& rhs)
@@ -208,7 +144,8 @@ std::vector<QPoint> PathFindingSystem::getFieldsFast(qint32 startX, qint32 start
     {
         for (qint32 y = -max; y <= max; y++)
         {
-            if ((qAbs(x) + qAbs(y) >= min) && (qAbs(x) + qAbs(y) <= max))
+            const qint32 distance = HexGrid::distance(x, y);
+            if ((distance >= min) && (distance <= max))
             {
                 points.push_back(QPoint(startX + x, startY + y));
             }
@@ -275,7 +212,7 @@ std::vector<QPoint> PathFindingSystem::getPathFast(qint32 x, qint32 y) const
     qint32 startCost = getTargetCosts(x, y);
     if (startCost >= 0)
     {
-        qint32 curX = x;
+        qint32 curX = HexGrid::wrapX(x);
         qint32 curY = y;
         points.push_back(QPoint(curX, curY));
         while (curX != m_StartPoint.x() ||
@@ -303,11 +240,24 @@ std::vector<QPoint> PathFindingSystem::getPathFast(qint32 x, qint32 y) const
                     curY += 1;
                     break;
                 }
+                case Directions::NorthEast:
+                {
+                    curX -= 1;
+                    curY += 1;
+                    break;
+                }
+                case Directions::SouthWest:
+                {
+                    curX += 1;
+                    curY -= 1;
+                    break;
+                }
                 default:
                 {
                     return points;
                 }
             }
+            curX = HexGrid::wrapX(curX);
             points.push_back(QPoint(curX, curY));
         }
     }
@@ -316,6 +266,7 @@ std::vector<QPoint> PathFindingSystem::getPathFast(qint32 x, qint32 y) const
 
 qint32 PathFindingSystem::getTargetCosts(qint32 x, qint32 y) const
 {
+    x = HexGrid::wrapX(x);
     if (x >= 0 && x < m_width &&
         y >= 0 && y < m_height)
     {
@@ -371,25 +322,13 @@ QVector<QPoint> PathFindingSystem::getFields(qint32 startX, qint32 startY, qint3
 
 bool PathFindingSystem::hasPoints(qint32 startX, qint32 startY) const
 {
-    auto index = getIndex(startX + 1, startY);
-    if (index >= 0 && index < m_costs.size() && m_costs[index] != infinite && m_costs[index] > 0)
+    const qint32 neighbourCount = HexGrid::neighbourCount();
+    for (qint32 i = 0; i < neighbourCount; ++i)
     {
-        return true;
-    }
-    index = getIndex(startX - 1, startY);
-    if (index >= 0 && index < m_costs.size() && m_costs[index] != infinite && m_costs[index] > 0)
-    {
-        return true;
-    }
-    index = getIndex(startX, startY + 1);
-    if (index >= 0 && index < m_costs.size() && m_costs[index] != infinite && m_costs[index] > 0)
-    {
-        return true;
-    }
-    index = getIndex(startX, startY - 1);
-    if (index >= 0 && index < m_costs.size() && m_costs[index] != infinite && m_costs[index] > 0)
-    {
-        return true;
+        if (getTargetCosts(startX + HexGrid::neighbours[i].x(), startY + HexGrid::neighbours[i].y()) > 0)
+        {
+            return true;
+        }
     }
     return false;
 }

@@ -815,6 +815,13 @@ var Constructor = function()
                 }
             }
 
+            // promotions are earned by the funds value of the dealt damage
+            if (!simulation)
+            {
+                UNITRANKINGSYSTEM.addDamageProgress(attacker, (defStartHp - defUnit.getHp()) * defUnit.getCosts() / 10);
+                UNITRANKINGSYSTEM.addDamageProgress(defUnit, (atkStartHp - attacker.getHp()) * attacker.getCosts() / 10);
+            }
+
             // post battle action of the attacking unit
             attacker.getOwner().postBattleActions(attacker, damage, defUnit, false, attackerWeapon, ACTION_FIRE.postAnimationAction);
             defOwner.postBattleActions(attacker, damage, defUnit, true, attackerWeapon, ACTION_FIRE.postAnimationAction);
@@ -905,7 +912,10 @@ var Constructor = function()
                 // we destroyed a unit
                 map.getGameRecorder().destroyedUnit(defUnit.getOwner().getPlayerID(), attacker.getUnitID(), attacker.getOwner().getPlayerID());
                 attacker.killUnit();
-                UNITRANKINGSYSTEM.increaseRang(defUnit);
+                if (UNITRANKINGSYSTEM.rankUpOnKill)
+                {
+                    UNITRANKINGSYSTEM.increaseRang(defUnit);
+                }
             }
             // level up and attacker destruction
             if (defUnit.getHp() <= 0)
@@ -918,7 +928,10 @@ var Constructor = function()
                 // we destroyed a unit nice
                 map.getGameRecorder().destroyedUnit(attacker.getOwner().getPlayerID(), defUnit.getUnitID(), defUnit.getOwner().getPlayerID());
                 defUnit.killUnit();
-                UNITRANKINGSYSTEM.increaseRang(attacker);
+                if (UNITRANKINGSYSTEM.rankUpOnKill)
+                {
+                    UNITRANKINGSYSTEM.increaseRang(attacker);
+                }
             }
             ACTION_FIRE.postUnitAnimationAttacker = null;
             ACTION_FIRE.postUnitAnimationDefender = null;
@@ -940,7 +953,11 @@ var Constructor = function()
                 {
                     ACHIEVEMENT_KILL_NEUTRAL_BUILDING.killed(defBuilding.getBuildingID());
                 }
-                Global[defBuilding.getBuildingID()].onDestroyed(defBuilding, map);
+                // most buildings don't have hp and no destruction handler
+                if (typeof Global[defBuilding.getBuildingID()].onDestroyed === "function")
+                {
+                    Global[defBuilding.getBuildingID()].onDestroyed(defBuilding, map);
+                }
             }
         }
         else if (ACTION_FIRE.postBuildingAnimationTerrain !== null &&
@@ -951,7 +968,10 @@ var Constructor = function()
             {
                 ACHIEVEMENT_KILL_NEUTRAL_BUILDING.killed(ACTION_FIRE.postBuildingAnimationTerrain.getID());
             }
-            Global[ACTION_FIRE.postBuildingAnimationTerrain.getID()].onDestroyed(ACTION_FIRE.postBuildingAnimationTerrain, map);
+            if (typeof Global[ACTION_FIRE.postBuildingAnimationTerrain.getID()].onDestroyed === "function")
+            {
+                Global[ACTION_FIRE.postBuildingAnimationTerrain.getID()].onDestroyed(ACTION_FIRE.postBuildingAnimationTerrain, map);
+            }
         }
         ACTION_FIRE.postBuildingAnimationTerrain = null;
         ACTION_FIRE.postAnimationAction = null;

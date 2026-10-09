@@ -174,35 +174,70 @@ void InfluenceFrontMap::addBuildingInfluence()
         }
     }
     float fullInfluenceRange = 6;
+    // units of the same movement type share an island map, so each building only needs one check per island map
+    // instead of one per unit of its build list.
+    struct IslandCount
+    {
+        qint32 island{0};
+        qint32 count{0};
+    };
+    std::vector<std::vector<IslandCount>> buildingIslands(buildingPositions.size());
+    for (qint32 building = 0; building < buildingPositions.size(); building++)
+    {
+        for (auto & unitId : buildLists[building])
+        {
+            qint32 island = getIslandFromUnitId(unitId, unitIdToIsland);
+            if (island >= 0)
+            {
+                bool found = false;
+                for (auto & item : buildingIslands[building])
+                {
+                    if (item.island == island)
+                    {
+                        ++item.count;
+                        found = true;
+                        break;
+                    }
+                }
+                if (!found)
+                {
+                    buildingIslands[building].push_back({island, 1});
+                }
+            }
+        }
+    }
     Interpreter* pInterpreter = Interpreter::getInstance();
     for (qint32 x = 0; x < width; x++)
     {
+        pInterpreter->threadProcessEvents();
         for (qint32 y = 0; y < heigth; y++)
         {
             QPoint curPos(x, y);
             for (qint32 building = 0; building < buildingPositions.size(); building++)
             {
-                pInterpreter->threadProcessEvents();
                 QPoint pos = buildingPositions[building];
                 float buildSize = static_cast<float>(buildLists[building].size());
                 qint32 owner = buildingOwners[building];
                 float singleInfluence = income[owner] / buildSize;
-                for (auto & unitId : buildLists[building])
+                qint32 influence = -1;
+                for (auto & item : buildingIslands[building])
                 {
-                    qint32 island = getIslandFromUnitId(unitId, unitIdToIsland);
-
-                    if (island >= 0 && m_islands[island]->sameIsland(x, y, pos.x(), pos.y()))
+                    if (m_islands[item.island]->sameIsland(x, y, pos.x(), pos.y()))
                     {
-                        float dis = GlobalUtils::getDistance(curPos, pos);
-                        if (dis > fullInfluenceRange)
+                        if (influence < 0)
                         {
-                            float dayDivider = dis / fullInfluenceRange + 1.0f;
-                            m_InfluenceMap[x][y].increaseInfluence(owner, singleInfluence / (dayDivider));
+                            float dis = GlobalUtils::getDistance(curPos, pos);
+                            if (dis > fullInfluenceRange)
+                            {
+                                float dayDivider = dis / fullInfluenceRange + 1.0f;
+                                influence = singleInfluence / (dayDivider);
+                            }
+                            else
+                            {
+                                influence = singleInfluence;
+                            }
                         }
-                        else
-                        {
-                            m_InfluenceMap[x][y].increaseInfluence(owner, singleInfluence);
-                        }
+                        m_InfluenceMap[x][y].increaseInfluence(owner, influence * item.count);
                     }
                 }
             }
@@ -237,7 +272,13 @@ qint32 InfluenceFrontMap::getIslandFromUnitId(const QString & unitId, std::map<Q
 
 void InfluenceFrontMap::clear()
 {
-    m_InfluenceMap.clear();
+    // the fields are kept and reset, as long as the size of the map is the same
+    if (m_pMap == nullptr ||
+        static_cast<qint32>(m_InfluenceMap.size()) != m_pMap->getMapWidth() ||
+        (m_InfluenceMap.size() > 0 && static_cast<qint32>(m_InfluenceMap[0].size()) != m_pMap->getMapHeight()))
+    {
+        m_InfluenceMap.clear();
+    }
     m_frontLines.clear();
     m_info.clear();
     reset();
@@ -263,7 +304,7 @@ void InfluenceFrontMap::reset()
         {
             for (qint32 y = 0; y < m_InfluenceMap[x].size(); ++y)
             {
-                m_InfluenceMap[x][y].reset(m_pMap);
+                m_InfluenceMap[HexGrid::wrapX(x)][y].reset(m_pMap);
             }
         }
     }
@@ -287,7 +328,7 @@ void InfluenceFrontMap::addUnitInfluence(Unit* pUnit, UnitPathFindingSystem* pPf
             {                
                 divider = fieldCost / movePoints + 1.0f;
             }
-            m_InfluenceMap[point.x()][point.y()].increaseInfluence(owner, value / divider);
+            m_InfluenceMap[HexGrid::wrapX(point.x())][point.y()].increaseInfluence(owner, value / divider);
         }
     }
 }
@@ -300,7 +341,7 @@ void InfluenceFrontMap::updateOwners()
     {
         for (qint32 y = 0; y < heigth; y++)
         {
-            m_InfluenceMap[x][y].updateOwner(m_pOwner);
+            m_InfluenceMap[HexGrid::wrapX(x)][y].updateOwner(m_pOwner);
         }
     }
 }
@@ -311,9 +352,9 @@ void InfluenceFrontMap::show()
     {
         for (qint32 y = 0; y < m_InfluenceMap[x].size(); ++y)
         {
-            if (m_InfluenceMap[x][y].owners.size() == 1)
+            if (m_InfluenceMap[HexGrid::wrapX(x)][y].owners.size() == 1)
             {
-                qint32 owner = m_InfluenceMap[x][y].owners[0];
+                qint32 owner = m_InfluenceMap[HexGrid::wrapX(x)][y].owners[0];
                 oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
                 sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());
                 QColor color = m_pMap->getPlayer(owner)->getColor();
@@ -370,7 +411,7 @@ void InfluenceFrontMap::showFrontlines()
         ++count;
         for (auto & field : frontline)
         {
-            auto & info = m_InfluenceMap[field.x()][field.y()];
+            auto & info = m_InfluenceMap[HexGrid::wrapX(field.x())][field.y()];
             qint32 size = GameMap::getImageSize();
             if (info.frontOwners.size() > 0)
             {
@@ -428,7 +469,7 @@ void InfluenceFrontMap::findFrontLineTiles()
     {
         for (qint32 y = 0; y < heigth; ++y)
         {
-            auto & info = m_InfluenceMap[x][y];
+            auto & info = m_InfluenceMap[HexGrid::wrapX(x)][y];
             auto & owners = info.owners;
             qint32 ownerSize = owners.size();
             if (ownerSize > 0)
@@ -439,7 +480,7 @@ void InfluenceFrontMap::findFrontLineTiles()
                     qint32 neighbourY = y + circle->at(neighbours).y();
                     if (m_pMap->onMap(neighbourX, neighbourY))
                     {
-                        auto & info2 = m_InfluenceMap[neighbourX][neighbourY];
+                        auto & info2 = m_InfluenceMap[HexGrid::wrapX(neighbourX)][neighbourY];
                         qint32 owner2Size = info2.owners.size();
                         if (owner2Size > 0)
                         {
@@ -500,7 +541,7 @@ void InfluenceFrontMap::createFrontLine()
     {
         for (qint32 y = 0; y < heigth; ++y)
         {
-            auto & info = m_InfluenceMap[x][y];
+            auto & info = m_InfluenceMap[HexGrid::wrapX(x)][y];
             if (info.frontMovetype.size() > 0 &&
                 info.frontLineCreated == false)
             {
@@ -523,7 +564,7 @@ void InfluenceFrontMap::searchFrontLine(QmlVectorPoint* neighbours, InfluenceInf
         qint32 newY = y + neighbour.y();
         if (m_pMap->onMap(newX, newY))
         {
-            auto & info2 = m_InfluenceMap[newX][newY];
+            auto & info2 = m_InfluenceMap[HexGrid::wrapX(newX)][newY];
             if (info2.frontLineCreated == false &&
                 info2.frontMovetype == info.frontMovetype)
             {
@@ -544,7 +585,7 @@ void InfluenceFrontMap::updateHighestInfluence()
     {
         for (qint32 y = 0; y < heigth; ++y)
         {
-            auto & info = m_InfluenceMap[x][y];
+            auto & info = m_InfluenceMap[HexGrid::wrapX(x)][y];
             if (info.highestInfluence > m_totalHighestInfluence)
             {
                 m_totalHighestInfluence = info.highestInfluence;

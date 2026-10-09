@@ -1,4 +1,5 @@
 #pragma once
+#include "coreengine/hexgrid.h"
 #include <QObject>
 #include <QVector>
 
@@ -42,8 +43,8 @@ public:
     Q_INVOKABLE inline bool sameIsland(qint32 x1, qint32 y1,
                            qint32 x2, qint32 y2) const
     {
-        return (m_Islands[x1][y1] > UNKNOWN &&
-                m_Islands[x1][y1] == m_Islands[x2][y2]);
+        return (m_Islands[HexGrid::wrapX(x1)][y1] > UNKNOWN &&
+                m_Islands[HexGrid::wrapX(x1)][y1] == m_Islands[HexGrid::wrapX(x2)][y2]);
     }
     /**
      * @brief getIsland
@@ -53,7 +54,7 @@ public:
      */
     Q_INVOKABLE inline qint32 getIsland(qint32 x, qint32 y) const
     {
-        return m_Islands[x][y];
+        return m_Islands[HexGrid::wrapX(x)][y];
     }
     /**
      * @brief getIslandSize

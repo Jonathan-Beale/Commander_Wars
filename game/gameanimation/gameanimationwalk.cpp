@@ -74,6 +74,8 @@ bool GameAnimationWalk::onFinished(bool skipping)
 
 GameEnums::Directions GameAnimationWalk::getMovementDirection(qint32 x, qint32 y, qint32 x2, qint32 y2)
 {
+    // a step over the border of a wrapping map is a step to the neighbour field
+    x2 = x + HexGrid::wrapDelta(x2 - x);
     if (x == x2)
     {
         if (y < y2)
@@ -95,6 +97,11 @@ GameEnums::Directions GameAnimationWalk::getMovementDirection(qint32 x, qint32 y
         {
             return GameEnums::Directions_West;
         }
+    }
+    else if (HexGrid::enabled())
+    {
+        // the diagonal moves of the hex grid are closer to the vertical sprites
+        return y < y2 ? GameEnums::Directions_South : GameEnums::Directions_North;
     }
     return GameEnums::Directions_East;
 }
@@ -121,8 +128,9 @@ void GameAnimationWalk::loadSpriteV2(const QString spriteID, GameEnums::Recolori
         oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
         oxygine::spTweenQueue queueAnimating = MemoryManagement::create<oxygine::TweenQueue>();
         oxygine::spTweenQueue queueMoving = MemoryManagement::create<oxygine::TweenQueue>();
-        pSprite->setPosition(m_pUnit->Unit::getX() * GameMap::getImageSize() - static_cast<qint32>((pAnim->getWidth() * scaling - GameMap::getImageSize()) / 2.0f),
-                             m_pUnit->Unit::getY() * GameMap::getImageSize() - static_cast<qint32>((pAnim->getHeight() * scaling - GameMap::getImageSize()) / 2.0f));
+        const QPoint startPos = HexGrid::fieldToScreen(m_pUnit->Unit::getX(), m_pUnit->Unit::getY(), GameMap::getImageSize());
+        pSprite->setPosition(startPos.x() - static_cast<qint32>((pAnim->getWidth() * scaling - GameMap::getImageSize()) / 2.0f),
+                             startPos.y() - static_cast<qint32>((pAnim->getHeight() * scaling - GameMap::getImageSize()) / 2.0f));
         setSize(pAnim->getSize());
         if (m_pUnit->isStealthed(pPlayer))
         {
@@ -131,6 +139,9 @@ void GameAnimationWalk::loadSpriteV2(const QString spriteID, GameEnums::Recolori
         pSprite->setScale(scaling);
         if (m_movePath.size() > 1)
         {
+            // the positions are summed up step by step, so a unit crossing the border of a wrapping map
+            // keeps walking in its direction instead of moving across the whole map.
+            QPoint walkPos = startPos;
             for (qint32 i = m_movePath.size() - 2; i >= 0; i--)
             {
                 qint32 x = 0;
@@ -144,8 +155,11 @@ void GameAnimationWalk::loadSpriteV2(const QString spriteID, GameEnums::Recolori
                 {
                     direction = getMovementDirection(m_movePath[i + 1].x(), m_movePath[i + 1].y(), m_movePath[i].x(), m_movePath[i].y());
                 }
-                x = m_movePath[i].x() * GameMap::getImageSize() - static_cast<qint32>((pAnim->getWidth() * scaling - GameMap::getImageSize()) / 2.0f);
-                y = m_movePath[i].y() * GameMap::getImageSize() - static_cast<qint32>((pAnim->getHeight() * scaling - GameMap::getImageSize()) / 2.0f);
+                walkPos += HexGrid::offsetToScreen(HexGrid::wrapDelta(m_movePath[i].x() - m_movePath[i + 1].x()),
+                                                   m_movePath[i].y() - m_movePath[i + 1].y(), GameMap::getImageSize());
+                const QPoint fieldPos = HexGrid::wraps() ? walkPos : HexGrid::fieldToScreen(m_movePath[i].x(), m_movePath[i].y(), GameMap::getImageSize());
+                x = fieldPos.x() - static_cast<qint32>((pAnim->getWidth() * scaling - GameMap::getImageSize()) / 2.0f);
+                y = fieldPos.y() - static_cast<qint32>((pAnim->getHeight() * scaling - GameMap::getImageSize()) / 2.0f);
 
                 oxygine::spTween tween1 = oxygine::createTween(oxygine::Actor::TweenPosition(QPoint(x, y)), oxygine::timeMS(m_frameTime * pAnim->getRows()), 1);
                 // toggle visibility of the unit

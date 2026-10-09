@@ -531,6 +531,17 @@ public:
     Q_INVOKABLE void setMultiTurnCounter(const quint32 value);
     Q_INVOKABLE bool getShowCursor();
     Q_INVOKABLE void setShowCursor(bool ShowCursor);
+    /**
+     * @brief getHexGrid hex grid prototype: if maps are played on the hex grid instead of the square grid.
+     * The environment variable COW_SQUARE_GRID always selects the square grid.
+     */
+    Q_INVOKABLE bool getHexGrid();
+    Q_INVOKABLE void setHexGrid(bool hexGrid);
+    /**
+     * @brief setForceLocalAi the ai's are created inside of the game process even if the ai process is enabled.
+     * Needed by the simultaneous turns prototype. Not stored in the settings.
+     */
+    void setForceLocalAi(bool forceLocalAi);
     Q_INVOKABLE bool getAutoEndTurn();
     Q_INVOKABLE void setAutoEndTurn(bool AutoEndTurn);
     Q_INVOKABLE GameEnums::BattleAnimationType getBattleAnimationType();
@@ -1033,6 +1044,8 @@ private:
     QString m_defaultBannlist;
     bool m_ShowCursor{true};
     bool m_AutoEndTurn{false};
+    bool m_hexGrid{true};
+    bool m_forceLocalAi{false};
     qint32 m_MenuItemCount{13};
     qint32 m_MenuItemRowCount{2};
     bool m_StaticMarkedFields{false};

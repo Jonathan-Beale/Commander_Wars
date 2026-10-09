@@ -298,8 +298,9 @@ void IngameInfoBar::syncMinimapPosition()
         QPoint centeredPos = m_pMap->getCenteredPosition();
         auto bounds = m_pMinimapSlider->getDragBounds();
         auto size = m_pMinimapSlider->getSize();
-        qint32 newX = size.width() / 2 - centeredPos.x() * Minimap::IMAGE_SIZE * m_pMinimap->getScaleX();
-        qint32 newY = size.height() / 2 - centeredPos.y() * Minimap::IMAGE_SIZE * m_pMinimap->getScaleY();
+        const QPoint minimapPos = HexGrid::fieldToScreen(centeredPos.x(), centeredPos.y(), Minimap::IMAGE_SIZE);
+        qint32 newX = size.width() / 2 - minimapPos.x() * m_pMinimap->getScaleX();
+        qint32 newY = size.height() / 2 - minimapPos.y() * m_pMinimap->getScaleY();
         if (newX < bounds.left())
         {
             newX = bounds.left();

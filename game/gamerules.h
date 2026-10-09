@@ -711,6 +711,10 @@ private:
     bool m_moveVision{true};
 
     std::vector<std::vector<oxygine::spSprite>> m_FogSprites;
+    /**
+     * @brief m_FogSpriteTypes vision type the fog sprite of a field was created for
+     */
+    std::vector<std::vector<qint8>> m_FogSpriteTypes;
     std::vector<oxygine::spSprite> m_WeatherSprites;
     oxygine::spSprite m_weatherMaster;
     oxygine::spSprite m_fogMaster;

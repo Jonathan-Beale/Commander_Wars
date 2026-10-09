@@ -14,6 +14,7 @@
 
 #include "coreengine/userdata.h"
 #include "coreengine/mainapp.h"
+#include "coreengine/perftrace.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/audiomanager.h"
 #include "coreengine/globalutils.h"
@@ -187,6 +188,7 @@ void Mainapp::nextStartUpStep(GameEnums::StartupPhase step)
     GameConsole::setModuleMode(GameConsole::eResources, false);
 #endif
     GameConsole::print("Loading startup phase: " + QString::number(step), GameConsole::eDEBUG);
+    PerfTrace::mark("startup step " + QString::number(step));
     m_startUpStep = step;
     bool automaticNextStep = false;
     switch (step)

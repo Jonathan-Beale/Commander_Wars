@@ -270,6 +270,21 @@
                 <x>10</x>
                 <y>lastY + lastHeight + 10</y>
                 <width>300</width>
+                <text>QT_TRANSLATE_NOOP("GAME","Hex grid:")</text>
+                <font>"main"</font>
+                <fontSize>24</fontSize>
+            </Label>
+            <Checkbox>
+                <x>lastX + lastWidth + 10</x>
+                <y>lastY</y>
+                <tooltip>QT_TRANSLATE_NOOP("GAME","Prototype: plays maps on a hex grid instead of the square grid. Applies to the next map you open. Use the hex maps (names starting with Hex) with it.")</tooltip>
+                <startValue>settings.getHexGrid()</startValue>
+                <onEvent>settings.setHexGrid(input)</onEvent>
+            </Checkbox>
+            <Label>
+                <x>10</x>
+                <y>lastY + lastHeight + 10</y>
+                <width>300</width>
                 <text>QT_TRANSLATE_NOOP("GAME","Auto end turn:")</text>
                 <font>"main"</font>
                 <fontSize>24</fontSize>

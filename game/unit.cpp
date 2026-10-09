@@ -1,3 +1,8 @@
+#include "3rd_party/oxygine-framework/oxygine/RenderState.h"
+#include "3rd_party/oxygine-framework/oxygine/UpdateState.h"
+#include "game/terrain.h"
+#include <QMutex>
+#include <QHash>
 #include <QColor>
 
 #include "3rd_party/oxygine-framework/oxygine/tween/tweentogglevisibility.h"
@@ -589,18 +594,49 @@ qint32 Unit::getVision(QPoint position)
     {
         rangeModifier += m_pMap->getGameRules()->getCurrentWeather()->getVisionrangeModifier(this, m_pTerrain);
     }
-    qint32 mapHeigth = m_pMap->getMapHeight();
-    qint32 mapWidth = m_pMap->getMapWidth();
-    for (qint32 x = 0; x < mapWidth; x++)
+    // The vision bonus of the buildings of the owner is the same for all of his units. Searching the whole map
+    // for each unit is far to slow on large maps: this gets called for all units after each action.
+    struct BuildingVisionBonus
     {
-        for (qint32 y = 0; y < mapHeigth; y++)
+        quint64 version{0};
+        GameMap* pMap{nullptr};
+        qint32 bonus{0};
+    };
+    static QHash<Player*, BuildingVisionBonus> buildingBonusCache;
+    static QMutex buildingBonusMutex;
+    const quint64 version = MovementTableManager::getMovementStateVersion();
+    bool cached = false;
+    {
+        QMutexLocker locker(&buildingBonusMutex);
+        auto iter = buildingBonusCache.constFind(m_pOwner);
+        if (iter != buildingBonusCache.constEnd() && iter->version == version && iter->pMap == m_pMap)
         {
-            Building* pBuilding = m_pMap->getTerrain(x, y)->getBuilding();
-            if ((pBuilding != nullptr) &&
-                (pBuilding->getOwner() == m_pOwner))
+            rangeModifier += iter->bonus;
+            cached = true;
+        }
+    }
+    if (!cached)
+    {
+        qint32 buildingBonus = 0;
+        qint32 mapHeigth = m_pMap->getMapHeight();
+        qint32 mapWidth = m_pMap->getMapWidth();
+        for (qint32 x = 0; x < mapWidth; x++)
+        {
+            for (qint32 y = 0; y < mapHeigth; y++)
             {
-                rangeModifier += pBuilding->getVisionBonus();
+                Building* pBuilding = m_pMap->getTerrain(x, y)->getBuilding();
+                if ((pBuilding != nullptr) &&
+                    (pBuilding->getOwner() == m_pOwner))
+                {
+                    buildingBonus += pBuilding->getVisionBonus();
+                }
             }
+        }
+        rangeModifier += buildingBonus;
+        if (version == MovementTableManager::getMovementStateVersion())
+        {
+            QMutexLocker locker(&buildingBonusMutex);
+            buildingBonusCache.insert(m_pOwner, BuildingVisionBonus{version, m_pMap, buildingBonus});
         }
     }
     Terrain* pTerrain = m_pMap->getTerrain(position.x(), position.y());
@@ -1563,7 +1599,7 @@ qreal Unit::getTrueDamage(GameAction* pAction, qreal damage, QPoint position, qi
 
 bool Unit::canCounterAttack(GameAction* pAction, QPoint position, Unit* pDefender, QPoint defPosition, GameEnums::LuckDamageMode luckMode)
 {
-    bool canCounter = qAbs(position.x() - defPosition.x()) + qAbs(position.y() - defPosition.y()) == 1;
+    bool canCounter = GlobalUtils::getDistance(position, defPosition) == 1;
     if (!canCounter)
     {
         Interpreter* pInterpreter = Interpreter::getInstance();
@@ -2950,7 +2986,7 @@ QVector<QVector3D> Unit::getVisionFields(QPoint position)
         QPoint field = circleField + QPoint(position.x(), position.y());
         if (m_pMap->onMap(field.x(), field.y()))
         {
-            if (qAbs(circleField.x()) + qAbs(circleField.y()) <= 1)
+            if (HexGrid::distance(circleField.x(), circleField.y()) <= 1)
             {
                 visionFields.append(QVector3D(field.x(), field.y(), true));
             }
@@ -4331,8 +4367,28 @@ void Unit::updateRangeActor(oxygine::spActor & pActor, qint32 range, QString res
     if (m_pTerrain != nullptr && range >= 0 && m_pMap)
     {
         CreateOutline::addCursorRangeOutline(pActor, resAnim, range, color);
-        pActor->setPosition(GameMap::getImageSize() * Unit::getX(), GameMap::getImageSize() * Unit::getY());
+        pActor->setPosition(HexGrid::fieldToScreen(Unit::getX(), Unit::getY(), GameMap::getImageSize()));
         m_pMap->addChild(pActor);
     }
 }
 
+void Unit::render(const oxygine::RenderState& parentRS)
+{
+    // Unit::getX and getY are the field on the map, the position on the screen is the one of the actor
+    if (!Terrain::isOnScreen(parentRS, oxygine::Actor::getX(), oxygine::Actor::getY()))
+    {
+        return;
+    }
+    m_lastRenderFrame = Terrain::getRenderFrame();
+    Tooltip::render(parentRS);
+}
+
+void Unit::update(const oxygine::UpdateState& us)
+{
+    oxygine::UpdateState catchUp;
+    const oxygine::UpdateState* pState = Terrain::updateVisible(us, m_lastRenderFrame, m_lastUpdateTime, catchUp);
+    if (pState != nullptr)
+    {
+        Tooltip::update(*pState);
+    }
+}

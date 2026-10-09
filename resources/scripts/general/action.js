@@ -124,6 +124,19 @@ var ACTION =
     },
     getSubWikiInfoId : null,
 
+    getNeighbourFields : function(field)
+    {
+        // all fields next to the given field. Four on the square grid and six on the hex grid
+        var offsets = globals.getCircle(1, 1);
+        var size = offsets.size();
+        var fields = [];
+        for (var i = 0; i < size; i++)
+        {
+            var offset = offsets.at(i);
+            fields.push(Qt.point(field.x + offset.x, field.y + offset.y));
+        }
+        return fields;
+    },
     isEmptyFieldAndHasNotMoved : function(action, unit, actionTargetField, targetField, map)
     {
         if (unit.getHasMoved() === false &&

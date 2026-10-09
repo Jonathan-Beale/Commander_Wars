@@ -635,6 +635,11 @@ public:
     {
         return m_missileTarget;
     }
+    /**
+     * @brief mapHasMissileBuilding
+     * @return if the map has at least one building which can launch a missile. Checked again when a building or terrain changes.
+     */
+    bool mapHasMissileBuilding();
     void addSelectedFieldData(spGameAction & pGameAction, const QPoint & point);
 protected:
     enum class BuildingMenuResult
@@ -888,6 +893,17 @@ protected:
     bool m_usedTransportSystem{false};
     bool m_usedPredefinedAi{false};
     bool m_missileTarget{false};
+    /**
+     * @brief m_buildingActionCache action lists of the buildings for the current turn, see useBuilding
+     */
+    std::map<Building*, std::pair<Player*, QStringList>> m_buildingActionCache;
+    quint64 m_buildingActionStamp{0};
+    /**
+     * @brief m_attackableTerrains fields with a terrain or building which has hp, see appendTerrainBuildingAttackTargets
+     */
+    std::vector<QPoint> m_attackableTerrains;
+    quint64 m_attackableTerrainVersion{0};
+    GameMap* m_pAttackableTerrainMap{nullptr};
     double m_fuelResupply{0.33f};
     double m_ammoResupply{0.25f};
     double m_enemyPruneRange{3.0};

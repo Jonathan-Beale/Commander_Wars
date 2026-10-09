@@ -1,7 +1,12 @@
 #include <QFile>
+#include <QPainter>
+#include <QPolygonF>
+#include <QHash>
+#include <QtMath>
 #include <QCryptographicHash>
 
 #include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
+#include "3rd_party/oxygine-framework/oxygine/res/SingleResAnim.h"
 #include "3rd_party/oxygine-framework/oxygine/tween/tweenscreenshake.h"
 
 #include "coreengine/mainapp.h"
@@ -9,6 +14,7 @@
 #include "coreengine/globalutils.h"
 #include "coreengine/userdata.h"
 #include "coreengine/settings.h"
+#include "coreengine/virtualpaths.h"
 
 #include "ai/coreai.h"
 
@@ -22,6 +28,7 @@
 #include "game/gameanimation/gameanimationnextday.h"
 #include "game/building.h"
 #include "game/gamemap.h"
+#include "coreengine/perftrace.h"
 #include "game/terrainfindingsystem.h"
 
 #include "gameinput/humanplayerinput.h"
@@ -34,6 +41,9 @@
 const char* const GameMap::m_GameAnimationFactory = "GameAnimationFactory";
 const qint32 GameMap::frameTime = 100;
 const char* const GameMap::PLAINS = "PLAINS";
+const char* const GameMap::VOID_TERRAIN = "VOID";
+const char* const GameMap::HEX_LAYOUT_VARIABLE = "HEX_LAYOUT";
+const char* const GameMap::HEX_WRAP_VARIABLE = "HEX_WRAP";
 static constexpr qint32 loadingScreenSize = 900;
 qint32 GameMap::m_imagesize = GameMap::defaultImageSize;
 
@@ -264,6 +274,51 @@ spQmlVectorPoint GameMap::getSpVisionCircle(qint32 x, qint32 y, qint32 minVision
         {
             visionHigh = 0;
         }
+        if (HexGrid::enabled())
+        {
+            // flood the vision away from the start field over the six neighbours
+            QPoint pos(x, y);
+            std::vector<QPoint> lineSight;
+            std::vector<QPoint> lineSightEvaluated;
+            if (0 >= minVisionRange)
+            {
+                pRet->append(QPoint(0, 0));
+            }
+            lineSightEvaluated.push_back(pos);
+            for (const auto & neighbour : HexGrid::neighbours)
+            {
+                lineSight.push_back(pos + neighbour);
+                lineSightEvaluated.push_back(pos + neighbour);
+            }
+            while (lineSight.size() > 0)
+            {
+                QPoint current = lineSight.front();
+                lineSight.erase(lineSight.cbegin());
+                if (onMap(current.x(), current.y()))
+                {
+                    qint32 distance = GlobalUtils::getDistance(current, pos);
+                    if (distance >= minVisionRange && distance <= maxVisionRange)
+                    {
+                        pRet->append(current - pos);
+                    }
+                    // we can see over the terrain continue vision range
+                    if (getTerrain(current.x(), current.y())->getTotalVisionHigh() <= visionHigh && distance + 1 <= maxVisionRange)
+                    {
+                        for (const auto & neighbour : HexGrid::neighbours)
+                        {
+                            QPoint next = current + neighbour;
+                            if (GlobalUtils::getDistance(next, pos) > distance &&
+                                !GlobalUtils::contains(lineSightEvaluated, next))
+                            {
+                                lineSight.push_back(next);
+                                lineSightEvaluated.push_back(next);
+                            }
+                        }
+                    }
+                }
+            }
+            return pRet;
+        }
         std::vector<QRect> m_LineSight;
         std::vector<QRect> m_LineSightEvaluated;
         m_LineSight.push_back(QRect(x - 1, y, 0, 2));
@@ -397,6 +452,7 @@ bool GameMap::isPlayersUnitInArea(const QRect area, const QVector<qint32> player
 
 GameMap::~GameMap()
 {
+    MovementTableManager::terrainLayoutChanged();
     CONSOLE_PRINT("deleting map.", GameConsole::eDEBUG);
     // clean up session
     for (qint32 y = 0; y < m_fields.size(); ++y)
@@ -404,9 +460,9 @@ GameMap::~GameMap()
         m_rowSprites[y]->detachAndRemove();
         for (qint32 x = 0; x < m_fields[y].size(); ++x)
         {
-            if (m_fields[y][x].get() != nullptr)
+            if (m_fields[y][HexGrid::wrapX(x)].get() != nullptr)
             {
-                m_fields[y][x]->detachAndRemove();
+                m_fields[y][HexGrid::wrapX(x)]->detachAndRemove();
             }
         }
         m_fields[y].clear();
@@ -424,7 +480,7 @@ spTerrain GameMap::getSpTerrain(qint32 x, qint32 y)
 {
     if (onMap(x, y))
     {
-        return m_fields[y][x];
+        return m_fields[y][HexGrid::wrapX(x)];
     }
     else
     {
@@ -436,7 +492,7 @@ Terrain* GameMap::getTerrain(qint32 x, qint32 y) const
 {
     if (onMap(x, y))
     {
-        return m_fields[y][x].get();
+        return m_fields[y][HexGrid::wrapX(x)].get();
     }
     else
     {
@@ -448,7 +504,7 @@ Terrain* GameMap::getTerrain(QPoint pos) const
 {
     if (onMap(pos.x(), pos.y()))
     {
-        return m_fields[pos.y()][pos.x()].get();
+        return m_fields[pos.y()][HexGrid::wrapX(pos.x())].get();
     }
     else
     {
@@ -598,10 +654,10 @@ void GameMap::onWeatherChanged(Weather* pWeather)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            m_fields[y][x]->onWeatherChanged(pWeather);
-            if (m_fields[y][x]->getBuilding() != nullptr)
+            m_fields[y][HexGrid::wrapX(x)]->onWeatherChanged(pWeather);
+            if (m_fields[y][HexGrid::wrapX(x)]->getBuilding() != nullptr)
             {
-                m_fields[y][x]->getBuilding()->onWeatherChanged(pWeather);
+                m_fields[y][HexGrid::wrapX(x)]->getBuilding()->onWeatherChanged(pWeather);
             }
         }
     }
@@ -619,8 +675,12 @@ void GameMap::updateSprites(qint32 xInput, qint32 yInput, bool editor, bool show
     }
     qint32 heigth = getMapHeight();
     qint32 width = getMapWidth();
-    setWidth(width * GameMap::getImageSize());
-    setHeight(heigth * GameMap::getImageSize());
+    if ((xInput < 0) && (yInput < 0))
+    {
+        updateHexPlayArea();
+    }
+    setWidth(HexGrid::mapActorWidth(width, heigth, GameMap::getImageSize()));
+    setHeight(HexGrid::mapPixelHeight(heigth, GameMap::getImageSize()));
 
     QVector<QPoint> flowPoints;
     if ((xInput < 0) && (yInput < 0))
@@ -687,27 +747,27 @@ void GameMap::updateSpritesOfTiles(const QVector<QPoint> & points, bool editor, 
 
 void GameMap::updateTileSprites(qint32 x, qint32 y, QVector<QPoint> & flowPoints, bool editor, bool applyRulesPalette)
 {
-    if (m_fields[y][x]->getTileHasFlowDirection() &&
-        !m_fields[y][x]->getFixedSprite())
+    if (m_fields[y][HexGrid::wrapX(x)]->getTileHasFlowDirection() &&
+        !m_fields[y][HexGrid::wrapX(x)]->getFixedSprite())
     {
         flowPoints.append(QPoint(x, y));
     }
-    if (!m_fields[y][x]->getHasFlowDirection() ||
-        m_fields[y][x]->getFixedSprite())
+    if (!m_fields[y][HexGrid::wrapX(x)]->getHasFlowDirection() ||
+        m_fields[y][HexGrid::wrapX(x)]->getFixedSprite())
     {
         if (applyRulesPalette)
         {
-            m_fields[y][x]->setTerrainPaletteGroup(m_gameRules->getMapPalette());
+            m_fields[y][HexGrid::wrapX(x)]->setTerrainPaletteGroup(m_gameRules->getMapPalette());
         }
-        m_fields[y][x]->loadSprites();
+        m_fields[y][HexGrid::wrapX(x)]->loadSprites();
     }
-    if (m_fields[y][x]->getUnit() != nullptr)
+    if (m_fields[y][HexGrid::wrapX(x)]->getUnit() != nullptr)
     {
-        m_fields[y][x]->getUnit()->updateSprites(editor);
+        m_fields[y][HexGrid::wrapX(x)]->getUnit()->updateSprites(editor);
     }
-    if (m_fields[y][x]->getBuilding() != nullptr)
+    if (m_fields[y][HexGrid::wrapX(x)]->getBuilding() != nullptr)
     {
-        m_fields[y][x]->getBuilding()->updateBuildingSprites(false);
+        m_fields[y][HexGrid::wrapX(x)]->getBuilding()->updateBuildingSprites(false);
     }
 }
 
@@ -716,7 +776,7 @@ void GameMap::updateFlowTiles(QVector<QPoint> & flowPoints, bool applyRulesPalet
     while (flowPoints.size() > 0)
     {
         QPoint pos = flowPoints[0];
-        Terrain* pTerrain = m_fields[pos.y()][pos.x()].get();
+        Terrain* pTerrain = m_fields[pos.y()][HexGrid::wrapX(pos.x())].get();
         bool done = false;
         while (!done)
         {
@@ -776,7 +836,7 @@ void GameMap::syncTerrainAnimations(bool showLoadingScreen)
         }
         for (qint32 x = 0; x < width; x++)
         {
-            spTerrain pTerrain = m_fields[y][x];
+            spTerrain pTerrain = m_fields[y][HexGrid::wrapX(x)];
             pTerrain->syncAnimation(timeMs);
             pTerrain->detach();
             m_rowSprites[y]->addChild(pTerrain);
@@ -794,12 +854,12 @@ void GameMap::syncUnitsAndBuildingAnimations()
     {
         for (qint32 x = 0; x < width; x++)
         {
-            auto * pBuilding = m_fields[y][x]->getBuilding();
+            auto * pBuilding = m_fields[y][HexGrid::wrapX(x)]->getBuilding();
             if (pBuilding != nullptr)
             {
                 pBuilding->syncAnimation(timeMs);
             }
-            auto * pUnit = m_fields[y][x]->getUnit();
+            auto * pUnit = m_fields[y][HexGrid::wrapX(x)]->getUnit();
             if (pUnit != nullptr)
             {
                 pUnit->syncAnimation(timeMs);
@@ -816,11 +876,11 @@ void GameMap::killDeadUnits()
     {
         for (qint32 x = 0; x < width; x++)
         {
-            Unit* pUnit = m_fields[y][x]->getUnit();
+            Unit* pUnit = m_fields[y][HexGrid::wrapX(x)]->getUnit();
             if (pUnit != nullptr &&
                 pUnit->getHp() <= 0)
             {
-                m_fields[y][x]->setUnit(spUnit());
+                m_fields[y][HexGrid::wrapX(x)]->setUnit(spUnit());
             }
         }
     }
@@ -1159,6 +1219,11 @@ bool GameMap::onMap(qint32 x, qint32 y) const
 {
     qint32 heigth = getMapHeight();
     qint32 width = getMapWidth();
+    if (HexGrid::wraps())
+    {
+        // every column exists on a map which wraps around
+        return y >= 0 && y < heigth && width > 0;
+    }
     if ((x >= 0) &&
         (y >= 0) &&
         (x < width) &&
@@ -1177,6 +1242,10 @@ bool GameMap::onMap(const QPoint & point) const
 
     qint32 heigth = getMapHeight();
     qint32 width = getMapWidth();
+    if (HexGrid::wraps())
+    {
+        return point.y() >= 0 && point.y() < heigth && width > 0;
+    }
     if ((point.x() >= 0) &&
         (point.y() >= 0) &&
         (point.x() < width) &&
@@ -1187,6 +1256,92 @@ bool GameMap::onMap(const QPoint & point) const
     else
     {
         return false;
+    }
+}
+
+QPoint GameMap::getShownFieldPosition(qint32 x, qint32 y) const
+{
+    QPoint fieldPos = HexGrid::fieldToScreen(x, y, m_imagesize);
+    const qint32 period = HexGrid::wrapPeriod(m_imagesize);
+    if (period > 0 && m_pMenu != nullptr)
+    {
+        // use the copy of the field which is the closest one to the center of the screen
+        oxygine::spSlidingActorNoClipRect pMapSliding = m_pMenu->getMapSliding();
+        oxygine::spActor pMapSlidingActor = m_pMenu->getMapSlidingActor();
+        if (pMapSliding.get() != nullptr &&
+            pMapSlidingActor.get() != nullptr)
+        {
+            const qreal center = (pMapSliding->getScaledWidth() / 2.0 - pMapSlidingActor->getX() - getX()) / getZoom() - m_imagesize / 2.0;
+            qint32 best = fieldPos.x();
+            for (qint32 copy = 1; copy < HexGrid::wrapCopies; ++copy)
+            {
+                const qint32 copyX = fieldPos.x() + copy * period;
+                if (qAbs(copyX - center) < qAbs(best - center))
+                {
+                    best = copyX;
+                }
+            }
+            fieldPos.setX(best);
+        }
+    }
+    return fieldPos;
+}
+
+void GameMap::render(const oxygine::RenderState& parentRS)
+{
+    // lets terrains, buildings and units know which of them were drawn in the last frames
+    Terrain::nextRenderFrame();
+    const qint32 period = HexGrid::wrapPeriod(m_imagesize);
+    if (period <= 0)
+    {
+        oxygine::Actor::render(parentRS);
+        return;
+    }
+    // a wrapping map is drawn several times next to each other.
+    const qreal shift = period * getScaleX();
+    const qreal copyWidth = HexGrid::mapPixelWidth(getMapWidth(), getMapHeight(), m_imagesize) * getScaleX();
+    const qreal stageWidth = oxygine::Stage::getStage()->getWidth();
+    for (qint32 copy = 0; copy < HexGrid::wrapCopies; ++copy)
+    {
+        oxygine::RenderState rs = parentRS;
+        rs.transform = QTransform::fromTranslate(copy * shift, 0) * parentRS.transform;
+        // skip the copies which aren't on the screen. Units and animations may be drawn up to a field outside of their copy.
+        const qreal left = rs.transform.map(QPointF(getX(), getY())).x();
+        const qreal scale = rs.transform.m11();
+        const qreal border = m_imagesize * getScaleX() * scale * 2;
+        if (left + copyWidth * scale + border < 0 ||
+            left - border > stageWidth)
+        {
+            continue;
+        }
+        oxygine::Actor::render(rs);
+    }
+}
+
+void GameMap::doUpdate(const oxygine::UpdateState& us)
+{
+    oxygine::Actor::doUpdate(us);
+    const qint32 period = HexGrid::wrapPeriod(m_imagesize) * getScaleX();
+    if (period > 0 && m_pMenu != nullptr)
+    {
+        oxygine::spSlidingActorNoClipRect pMapSliding = m_pMenu->getMapSliding();
+        oxygine::spActor pMapSlidingActor = m_pMenu->getMapSlidingActor();
+        if (pMapSliding.get() != nullptr &&
+            pMapSlidingActor.get() != nullptr &&
+            pMapSliding->getScaledWidth() <= period * 3 / 2)
+        {
+            // endless scrolling: all copies look the same, so the camera is moved back by a whole map
+            // once it gets close to the border of the outer copies
+            const qint32 left = -(pMapSlidingActor->getX() + getX());
+            if (left < period / 2)
+            {
+                pMapSlidingActor->setX(pMapSlidingActor->getX() - period);
+            }
+            else if (left >= period * 3 / 2)
+            {
+                pMapSlidingActor->setX(pMapSlidingActor->getX() + period);
+            }
+        }
     }
 }
 
@@ -1202,8 +1357,9 @@ void GameMap::centerMap(qint32 x, qint32 y, bool updateMinimapPosition)
             if (pMapSliding.get() != nullptr &&
                 pMapSlidingActor.get() != nullptr)
             {
-                qint32 newX = pMapSliding->getScaledWidth() / 2.0f - x * getZoom() * m_imagesize - m_imagesize / 2.0f;
-                qint32 newY = pMapSliding->getScaledHeight() / 2.0f - y * getZoom() * m_imagesize - m_imagesize / 2.0f;
+                const QPoint fieldPos = getShownFieldPosition(x, y);
+                qint32 newX = pMapSliding->getScaledWidth() / 2.0f - fieldPos.x() * getZoom() - m_imagesize / 2.0f;
+                qint32 newY = pMapSliding->getScaledHeight() / 2.0f - fieldPos.y() * getZoom() - m_imagesize / 2.0f;
                 limitPosition(m_pMenu, newX, newY);
                 pMapSlidingActor->setPosition(newX, newY);
                 m_pMenu->getCursor()->setMapPoint(x, y);
@@ -1224,8 +1380,11 @@ QPoint GameMap::getCenteredPosition() const
     {
         oxygine::spSlidingActorNoClipRect pMapSliding = m_pMenu->getMapSliding();
         oxygine::spActor pMapSlidingActor = m_pMenu->getMapSlidingActor();
-        x = -(pMapSlidingActor->getX() - pMapSliding->getScaledWidth() / 2.0f + m_imagesize / 2.0f) / (getZoom() * m_imagesize);
-        y = -(pMapSlidingActor->getY() - pMapSliding->getScaledHeight() / 2.0f + m_imagesize / 2.0f) / (getZoom() * m_imagesize);
+        const qreal pixelX = -(pMapSlidingActor->getX() - pMapSliding->getScaledWidth() / 2.0f + m_imagesize / 2.0f) / getZoom();
+        const qreal pixelY = -(pMapSlidingActor->getY() - pMapSliding->getScaledHeight() / 2.0f + m_imagesize / 2.0f) / getZoom();
+        const QPoint field = HexGrid::screenToField(pixelX + m_imagesize / 2.0, pixelY + m_imagesize / 2.0, m_imagesize);
+        x = field.x();
+        y = field.y();
     }
     return QPoint(x, y);
 }
@@ -1336,9 +1495,11 @@ void GameMap::zoomChanged()
 
 void GameMap::replaceTerrainOnly(const QString terrainID, qint32 x, qint32 y, bool useTerrainAsBaseTerrain, bool removeUnit, const QString palette, bool changePalette, bool includeBaseTerrain, bool force)
 {
+    MovementTableManager::clearBaseMovementPointsCache();
+    MovementTableManager::terrainLayoutChanged();
     if (onMap(x, y))
     {
-        spTerrain pTerrainOld = m_fields[y][x];
+        spTerrain pTerrainOld = m_fields[y][HexGrid::wrapX(x)];
         if (pTerrainOld->getTerrainID() != terrainID ||
             (changePalette && pTerrainOld->getPalette() != palette))
         {
@@ -1359,9 +1520,9 @@ void GameMap::replaceTerrainOnly(const QString terrainID, qint32 x, qint32 y, bo
             {
                 pTerrainOld->detachAndRemove();
                 pTerrain->setBaseTerrain(pTerrainOld);
-                m_fields[y][x] = pTerrain;
+                m_fields[y][HexGrid::wrapX(x)] = pTerrain;
                 m_rowSprites[y]->addChild(pTerrain);
-                pTerrain->setPosition(x * m_imagesize, y * m_imagesize);
+                pTerrain->setPosition(HexGrid::fieldToScreen(x, y, m_imagesize));
                 if (changePalette)
                 {
                     pTerrain->setPalette(palette);
@@ -1370,9 +1531,9 @@ void GameMap::replaceTerrainOnly(const QString terrainID, qint32 x, qint32 y, bo
             else
             {
                 pTerrainOld->detachAndRemove();
-                m_fields[y][x] = pTerrain;
+                m_fields[y][HexGrid::wrapX(x)] = pTerrain;
                 m_rowSprites[y]->addChild(pTerrain);
-                pTerrain->setPosition(x * m_imagesize, y * m_imagesize);
+                pTerrain->setPosition(HexGrid::fieldToScreen(x, y, m_imagesize));
                 if (changePalette)
                 {
                     pTerrain->setTerrainPalette(palette, includeBaseTerrain);
@@ -1386,7 +1547,7 @@ void GameMap::replaceTerrainOnly(const QString terrainID, qint32 x, qint32 y, bo
             qint32 mapWidth = getMapWidth();
             for (qint32 xPos = x + 1; xPos < mapWidth; xPos++)
             {
-                spTerrain pTerrain = m_fields[y][xPos];
+                spTerrain pTerrain = m_fields[y][HexGrid::wrapX(xPos)];
                 if (pTerrain.get() != nullptr)
                 {
                     pTerrain->detach();
@@ -1439,9 +1600,9 @@ void GameMap::updateTerrain(qint32 x, qint32 y)
             {
                 if (onMap(xPos, yPos))
                 {
-                    if (!canBePlaced(m_fields[yPos][xPos]->getTerrainID(), xPos, yPos))
+                    if (!canBePlaced(m_fields[yPos][HexGrid::wrapX(xPos)]->getTerrainID(), xPos, yPos))
                     {
-                        replaceTerrain(m_fields[yPos][xPos]->getBaseTerrainID(), xPos, yPos, false, true);
+                        replaceTerrain(m_fields[yPos][HexGrid::wrapX(xPos)]->getBaseTerrainID(), xPos, yPos, false, true);
                     }
                 }
             }
@@ -1499,7 +1660,7 @@ void GameMap::serializeObject(QDataStream& pStream, bool forHash) const
         for (qint32 x = 0; x < width; x++)
         {
             // serialize
-            m_fields[y][x]->serializeObject(uncompressedStream, forHash);
+            m_fields[y][HexGrid::wrapX(x)]->serializeObject(uncompressedStream, forHash);
         }
     }
     m_gameRules->serializeObject(uncompressedStream, forHash);
@@ -1542,7 +1703,7 @@ void GameMap::updateMapFlags() const
     {
         for (qint32 x = 0; x < width; x++)
         {
-            QString id = m_fields[y][x]->getID();
+            QString id = m_fields[y][HexGrid::wrapX(x)]->getID();
             if (id == "TELEPORTTILE")
             {
                 m_headerInfo.m_mapFlags = static_cast<GameEnums::MapFilterFlags>(m_headerInfo.m_mapFlags | GameEnums::MapFilterFlags_Teleport);
@@ -1739,7 +1900,7 @@ void GameMap::deserializer(QDataStream& pStream, bool fast)
     }
     CONSOLE_PRINT("Loading map " + m_headerInfo.m_mapName + " Fast =" + (fast ? "true" : "false"), GameConsole::eDEBUG);
     qint32 mapSize = m_headerInfo.m_width * m_headerInfo.m_height;
-    setSize(m_headerInfo.m_width * GameMap::getImageSize(), m_headerInfo.m_height * GameMap::getImageSize());
+    setSize(HexGrid::mapActorWidth(m_headerInfo.m_width, m_headerInfo.m_height, GameMap::getImageSize()), HexGrid::mapPixelHeight(m_headerInfo.m_height, GameMap::getImageSize()));
     bool showLoadingScreen = (mapSize >= loadingScreenSize) && !fast;
     if (showLoadingScreen)
     {
@@ -1805,14 +1966,14 @@ void GameMap::deserializer(QDataStream& pStream, bool fast)
         for (qint32 x = 0; x < m_headerInfo.m_width; x++)
         {
             spTerrain pTerrain = Terrain::createTerrain("", x, y, "", this);
-            m_fields[y][x] = pTerrain;
+            m_fields[y][HexGrid::wrapX(x)] = pTerrain;
             pTerrain->deserializer(*uncompressedStream, fast);
             if (pTerrain->isValid())
             {
                 if (!fast)
                 {
                     m_rowSprites[y]->addChild(pTerrain);
-                    pTerrain->setPosition(x * m_imagesize, y * m_imagesize);
+                    pTerrain->setPosition(HexGrid::fieldToScreen(x, y, m_imagesize));
                 }
             }
             else
@@ -1904,10 +2065,16 @@ void GameMap::deserializer(QDataStream& pStream, bool fast)
         Mainapp::getInstance()->continueRendering();
     }
     CONSOLE_PRINT("GameMap loaded", GameConsole::eDEBUG);
+    convertToHexLayout();
+    if (!fast)
+    {
+        updateHexPlayArea();
+    }
 }
 
 void GameMap::deserializeObject(QDataStream& pStream)
 {
+    MovementTableManager::terrainLayoutChanged();
     deserializer(pStream, false);
 }
 
@@ -1998,13 +2165,14 @@ void GameMap::showDamageCalculator()
 
 void GameMap::startGame()
 {
+    PerfTrace::mark("map: start game");
     CONSOLE_PRINT("GameMap::startGame()", GameConsole::eDEBUG);
     m_Recorder = MemoryManagement::create<GameRecorder>(this);
     for (qint32 y = 0; y < m_fields.size(); y++)
     {
         for (qint32 x = 0; x < m_fields[y].size(); x++)
         {
-            Unit* pUnit = m_fields[y][x]->getUnit();
+            Unit* pUnit = m_fields[y][HexGrid::wrapX(x)]->getUnit();
             if (pUnit != nullptr)
             {
                 pUnit->applyMod();
@@ -2056,12 +2224,14 @@ void GameMap::startGame()
 
 void GameMap::clearMap()
 {
+    MovementTableManager::clearBaseMovementPointsCache();
+    MovementTableManager::terrainLayoutChanged();
     for (qint32 y = 0; y < m_fields.size(); y++)
     {
         m_rowSprites[y]->detachAndRemove();
         for (qint32 x = 0; x < m_fields[y].size(); x++)
         {
-            m_fields[y][x]->detachAndRemove();
+            m_fields[y][HexGrid::wrapX(x)]->detachAndRemove();
         }
         m_fields[y].clear();
     }
@@ -2085,6 +2255,173 @@ qint32 GameMap::getImageSize()
     return m_imagesize;
 }
 
+oxygine::ResAnim* GameMap::getHexGraphic(qint32 graphic)
+{
+    // never deleted so the textures aren't released during the static destruction
+    static std::array<oxygine::spSingleResAnim, HexGraphic_Max>* pHexAnims = nullptr;
+    if (graphic < 0 || graphic >= HexGraphic_Max)
+    {
+        return nullptr;
+    }
+    if (pHexAnims == nullptr)
+    {
+        if (Mainapp::getInstance()->getNoUi())
+        {
+            return nullptr;
+        }
+        pHexAnims = new std::array<oxygine::spSingleResAnim, HexGraphic_Max>();
+        constexpr qint32 size = 96;
+        const QPointF center(size / 2.0, size / 2.0);
+        const QPointF vertices[] = {QPointF(size / 2.0, 0), QPointF(size, size / 4.0), QPointF(size, size * 3.0 / 4.0),
+                                    QPointF(size / 2.0, size), QPointF(0, size * 3.0 / 4.0), QPointF(0, size / 4.0)};
+        // vertices of the edge shared with the neighbour in the order of HexGrid::neighbours
+        static constexpr qint32 edgeVertices[6][2] = {{1, 2}, {4, 5}, {2, 3}, {5, 0}, {0, 1}, {3, 4}};
+        QPolygonF hex;
+        for (const auto & vertex : vertices)
+        {
+            hex << vertex;
+        }
+        const QColor pathColor(235, 40, 30);
+        const QColor pathBorderColor(90, 10, 10);
+        for (qint32 i = 0; i < HexGraphic_Max; ++i)
+        {
+            QImage img(size, size, QImage::Format_RGBA8888);
+            img.fill(Qt::transparent);
+            QPainter painter(&img);
+            painter.setRenderHint(QPainter::Antialiasing);
+            if (i == HexGraphic_Tile)
+            {
+                painter.setPen(QPen(QColor(150, 150, 150), 4));
+                painter.setBrush(Qt::white);
+                painter.drawPolygon(hex);
+            }
+            else if (i == HexGraphic_Fill)
+            {
+                painter.setPen(Qt::NoPen);
+                painter.setBrush(Qt::white);
+                painter.drawPolygon(hex);
+            }
+            else if (i == HexGraphic_Border)
+            {
+                painter.setPen(QPen(Qt::white, 3));
+                painter.setBrush(Qt::NoBrush);
+                painter.drawPolygon(hex);
+            }
+            else if (i < HexGraphic_PathHalf)
+            {
+                const qint32 direction = i - HexGraphic_Edge;
+                painter.setPen(QPen(Qt::white, 12, Qt::SolidLine, Qt::RoundCap));
+                painter.drawLine(vertices[edgeVertices[direction][0]], vertices[edgeVertices[direction][1]]);
+            }
+            else
+            {
+                const bool head = i >= HexGraphic_PathHead;
+                const QPoint neighbour = HexGrid::neighbours[head ? i - HexGraphic_PathHead : i - HexGraphic_PathHalf];
+                // half of the way to the center of the neighbour
+                const QPointF half((neighbour.x() + neighbour.y() / 2.0) * size / 2.0, neighbour.y() * 0.75 * size / 2.0);
+                if (head)
+                {
+                    const qreal length = qSqrt(half.x() * half.x() + half.y() * half.y());
+                    const QPointF dir = half / length;
+                    const QPointF normal(-dir.y(), dir.x());
+                    QPolygonF arrow;
+                    arrow << center + dir * 30 << center - dir * 12 + normal * 24 << center - dir * 12 - normal * 24;
+                    painter.setPen(QPen(pathBorderColor, 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+                    painter.setBrush(pathColor);
+                    painter.drawPolygon(arrow);
+                }
+                else
+                {
+                    painter.setPen(QPen(pathBorderColor, 20, Qt::SolidLine, Qt::RoundCap));
+                    painter.drawLine(center, center + half);
+                    painter.setPen(QPen(pathColor, 12, Qt::SolidLine, Qt::RoundCap));
+                    painter.drawLine(center, center + half);
+                }
+            }
+            painter.end();
+            (*pHexAnims)[i] = MemoryManagement::create<oxygine::SingleResAnim>();
+            Mainapp::getInstance()->loadResAnim((*pHexAnims)[i], img, 1, 1, 1);
+        }
+    }
+    return (*pHexAnims)[graphic].get();
+}
+
+oxygine::ResAnim* GameMap::getHexTileAnim()
+{
+    return getHexGraphic(HexGraphic_Tile);
+}
+
+oxygine::ResAnim* GameMap::getHexMaskedAnim(oxygine::ResAnim* pAnim)
+{
+    // never deleted so the textures aren't released during the static destruction
+    static QHash<QString, oxygine::spSingleResAnim>* pMaskedAnims = nullptr;
+    if (pAnim == nullptr || Mainapp::getInstance()->getNoUi())
+    {
+        return nullptr;
+    }
+    if (pMaskedAnims == nullptr)
+    {
+        pMaskedAnims = new QHash<QString, oxygine::spSingleResAnim>();
+    }
+    const QString resPath = pAnim->getResPath();
+    auto iter = pMaskedAnims->constFind(resPath);
+    if (iter != pMaskedAnims->constEnd())
+    {
+        return iter.value().get();
+    }
+    oxygine::spSingleResAnim pMasked;
+    const QString path = VirtualPaths::find(resPath);
+    const qint32 columns = pAnim->getColumns();
+    const qint32 rows = pAnim->getRows();
+    QImage img;
+    if (!resPath.isEmpty() && QFile::exists(path))
+    {
+        img = QImage(path).convertToFormat(QImage::Format_RGBA8888);
+    }
+    if (!img.isNull() && columns > 0 && rows > 0)
+    {
+        const qint32 frameWidth = img.width() / columns;
+        const qint32 frameHeight = img.height() / rows;
+        // the hex fills the box at the bottom of a frame. Higher sprites are allowed to overlap the upper fields.
+        const qint32 boxStart = frameHeight - frameWidth;
+        for (qint32 y = 0; y < img.height(); ++y)
+        {
+            const qint32 frameY = y % frameHeight - boxStart;
+            if (frameY < 0 || (boxStart > 0 && frameY < frameWidth / 2))
+            {
+                continue;
+            }
+            const qreal dy = qAbs((frameY + 0.5) / frameWidth - 0.5);
+            for (qint32 x = 0; x < img.width(); ++x)
+            {
+                const qreal dx = qAbs((x % frameWidth + 0.5) / frameWidth - 0.5);
+                if (dy > 0.5 - dx * 0.5)
+                {
+                    img.setPixelColor(x, y, Qt::transparent);
+                }
+            }
+        }
+        pMasked = MemoryManagement::create<oxygine::SingleResAnim>();
+        Mainapp::getInstance()->loadResAnim(pMasked, img, columns, rows, pAnim->getScaleFactor());
+    }
+    pMaskedAnims->insert(resPath, pMasked);
+    return pMasked.get();
+}
+
+oxygine::spSprite GameMap::createHexTileSprite(QColor color, qint32 graphic)
+{
+    oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
+    oxygine::ResAnim* pAnim = getHexGraphic(graphic);
+    if (pAnim != nullptr)
+    {
+        pSprite->setResAnim(pAnim);
+        pSprite->setScale(static_cast<float>(m_imagesize) / static_cast<float>(pAnim->getWidth()));
+    }
+    pSprite->setColor(QColor(color.red(), color.green(), color.blue()));
+    pSprite->setAlpha(color.alpha());
+    return pSprite;
+}
+
 void GameMap::enableUnits(Player* pPlayer)
 {
     qint32 heigth = getMapHeight();
@@ -2093,7 +2430,7 @@ void GameMap::enableUnits(Player* pPlayer)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer)
@@ -2153,7 +2490,7 @@ void GameMap::updateUnitIcons()
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 pUnit->updateIcons(getCurrentViewPlayer());
@@ -2243,7 +2580,7 @@ void GameMap::refillAll()
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 pUnit->refill();
@@ -2297,7 +2634,7 @@ void GameMap::endOfTurnPlayer(Player* pPlayer)
     {
         for (const auto x : std::as_const(xValues))
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer)
@@ -2305,7 +2642,7 @@ void GameMap::endOfTurnPlayer(Player* pPlayer)
                     pUnit->endOfTurn();
                 }
             }
-            spBuilding pBuilding = m_fields[y][x]->getSpBuilding();
+            spBuilding pBuilding = m_fields[y][HexGrid::wrapX(x)]->getSpBuilding();
             if (pBuilding.get() != nullptr)
             {
                 if (pBuilding->getOwner() == pPlayer &&
@@ -2349,7 +2686,7 @@ void GameMap::startOfTurnNeutral()
     {
         for (const auto x : std::as_const(xValues))
         {
-            spTerrain pTerrain = m_fields[y][x];
+            spTerrain pTerrain = m_fields[y][HexGrid::wrapX(x)];
             pTerrain->startOfTurn();
             spBuilding pBuilding = pTerrain->getSpBuilding();
             if (pBuilding.get() != nullptr &&
@@ -2378,7 +2715,7 @@ void GameMap::startOfTurnPlayer(Player* pPlayer)
     {
         for (const auto x : std::as_const(xValues))
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer)
@@ -2395,7 +2732,7 @@ void GameMap::startOfTurnPlayer(Player* pPlayer)
     {
         for (const auto x : std::as_const(xValues))
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer)
@@ -2404,7 +2741,7 @@ void GameMap::startOfTurnPlayer(Player* pPlayer)
                 }
                 pUnit->updateIcons(getCurrentViewPlayer());
             }
-            spBuilding pBuilding = m_fields[y][x]->getSpBuilding();
+            spBuilding pBuilding = m_fields[y][HexGrid::wrapX(x)]->getSpBuilding();
             if (pBuilding.get() != nullptr)
             {
                 if (pBuilding->getOwner() == pPlayer &&
@@ -2429,7 +2766,7 @@ void GameMap::centerOnPlayer(Player* pPlayer)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer)
@@ -2440,7 +2777,7 @@ void GameMap::centerOnPlayer(Player* pPlayer)
                     }
                 }
             }
-            spBuilding pBuilding = m_fields[y][x]->getSpBuilding();
+            spBuilding pBuilding = m_fields[y][HexGrid::wrapX(x)]->getSpBuilding();
             if (pBuilding.get() != nullptr)
             {
                 if (pBuilding->getOwner() == pPlayer &&
@@ -2482,7 +2819,7 @@ void GameMap::checkFuel(Player* pPlayer)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if ((pUnit->getOwner() == pPlayer) &&
@@ -2504,7 +2841,7 @@ Unit* GameMap::getUnit(qint32 uniqueID)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            Unit* pUnit = m_fields[y][x]->getUnit();
+            Unit* pUnit = m_fields[y][HexGrid::wrapX(x)]->getUnit();
             if (pUnit != nullptr)
             {
                 if (pUnit->getUniqueID() == uniqueID)
@@ -2558,7 +2895,7 @@ spQmlVectorUnit GameMap::getSpUnits(Player* pPlayer)
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spUnit pUnit = m_fields[y][x]->getSpUnit();
+            spUnit pUnit = m_fields[y][HexGrid::wrapX(x)]->getSpUnit();
             if (pUnit.get() != nullptr)
             {
                 if (pUnit->getOwner() == pPlayer && pUnit->getHp() > 0)
@@ -2609,8 +2946,8 @@ spQmlVectorBuilding GameMap::getSpBuildingsListCount(Player* pPlayer, const QStr
     {
         for (qint32 x = 0; x < width; x++)
         {
-            spBuilding pBuilding = m_fields[y][x]->getSpBuilding();
-            if (pBuilding.get() != nullptr && pBuilding->getTerrain() == m_fields[y][x].get())
+            spBuilding pBuilding = m_fields[y][HexGrid::wrapX(x)]->getSpBuilding();
+            if (pBuilding.get() != nullptr && pBuilding->getTerrain() == m_fields[y][HexGrid::wrapX(x)].get())
             {
                 if (pBuilding->getOwner() == pPlayer &&
                     (ids.isEmpty() || ids.contains(pBuilding->getBuildingID())))
@@ -2644,6 +2981,14 @@ void GameMap::setMapName(const QString value)
 
 void GameMap::nextTurn(quint32 dayToDayUptimeMs)
 {
+    // the base movement costs depend on terrains, buildings and their owners, not on the day or the current player
+    if (qEnvironmentVariableIsSet("COW_CLEAR_ALL_MOVE_COSTS"))
+    {
+        MovementTableManager::clearBaseMovementPointsCache();
+    }
+    MovementTableManager::movementStateChanged();
+    PerfTrace::mark("turn");
+    PerfTrace::dumpJsCalls();
     if (anyPlayerAlive())
     {
         Mainapp::getInstance()->pauseRendering();
@@ -2899,6 +3244,155 @@ void GameMap::initProxyAis()
     }
 }
 
+void GameMap::convertToHexLayout()
+{
+    if (!HexGrid::enabled() || m_Variables.getVariable(HEX_LAYOUT_VARIABLE) != nullptr)
+    {
+        return;
+    }
+    m_Variables.createVariable(HEX_LAYOUT_VARIABLE);
+    const qint32 heigth = getMapHeight();
+    // row y starts y / 2 fields further left than the first row
+    const qint32 maxShift = (heigth - 1) / 2;
+    if (maxShift <= 0)
+    {
+        return;
+    }
+    Mainapp::getInstance()->pauseRendering();
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        const qint32 right = y / 2;
+        const qint32 left = maxShift - right;
+        for (qint32 i = 0; i < left; ++i)
+        {
+            spTerrain pTerrain = Terrain::createTerrain(VOID_TERRAIN, -1, -1, "", this);
+            m_rowSprites[y]->addChild(pTerrain);
+            m_fields[y].insert(m_fields[y].begin(), pTerrain);
+        }
+        for (qint32 i = 0; i < right; ++i)
+        {
+            spTerrain pTerrain = Terrain::createTerrain(VOID_TERRAIN, -1, -1, "", this);
+            m_rowSprites[y]->addChild(pTerrain);
+            m_fields[y].push_back(pTerrain);
+        }
+    }
+    const qint32 width = getMapWidth();
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        for (qint32 x = 0; x < width; ++x)
+        {
+            spTerrain pTerrain = m_fields[y][HexGrid::wrapX(x)];
+            spUnit pUnit = pTerrain->getSpUnit();
+            pTerrain->setPosition(HexGrid::fieldToScreen(x, y, m_imagesize));
+            pTerrain->setX(x);
+            pTerrain->setY(y);
+            pTerrain->setPriority(pTerrain->getMapTerrainDrawPriority());
+            pTerrain->setUnit(pUnit);
+        }
+    }
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        for (qint32 x = 0; x < width; ++x)
+        {
+            spBuilding pBuilding = m_fields[y][HexGrid::wrapX(x)]->getSpBuilding();
+            if (pBuilding.get() != nullptr)
+            {
+                m_fields[y][HexGrid::wrapX(x)]->setBuilding(pBuilding);
+            }
+        }
+    }
+    Mainapp::getInstance()->continueRendering();
+}
+
+void GameMap::updateHexPlayArea()
+{
+    if (!HexGrid::enabled())
+    {
+        return;
+    }
+    const qint32 heigth = getMapHeight();
+    const qint32 width = getMapWidth();
+    // a map which wraps around in east west direction is shown as a whole
+    const bool wrap = m_Variables.getVariable(HEX_WRAP_VARIABLE) != nullptr;
+    HexGrid::g_wrapWidth = wrap ? width : 0;
+    HexGrid::g_wrapScrollHalf = 0;
+    bool hasVoid = false;
+    bool hasField = false;
+    qint32 minHalf = 0;
+    qint32 maxHalf = 0;
+    qint32 minRow = 0;
+    qint32 maxRow = 0;
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        for (qint32 x = 0; x < width; ++x)
+        {
+            if (m_fields[y][HexGrid::wrapX(x)].get() == nullptr)
+            {
+                continue;
+            }
+            if (m_fields[y][HexGrid::wrapX(x)]->isVoid())
+            {
+                hasVoid = true;
+            }
+            else
+            {
+                const qint32 half = 2 * x + y;
+                if (!hasField || half < minHalf)
+                {
+                    minHalf = half;
+                }
+                if (!hasField || half > maxHalf)
+                {
+                    maxHalf = half;
+                }
+                if (!hasField)
+                {
+                    minRow = y;
+                }
+                maxRow = y;
+                hasField = true;
+            }
+        }
+    }
+    if (hasVoid && hasField && !wrap)
+    {
+        HexGrid::setPlayArea(minHalf, maxHalf, minRow, maxRow);
+    }
+    else
+    {
+        HexGrid::resetPlayArea();
+    }
+    // the origin may have changed
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        for (qint32 x = 0; x < width; ++x)
+        {
+            Terrain* pTerrain = m_fields[y][HexGrid::wrapX(x)].get();
+            if (pTerrain == nullptr)
+            {
+                continue;
+            }
+            const QPoint pos = HexGrid::fieldToScreen(x, y, m_imagesize);
+            pTerrain->setPosition(pos);
+            Building* pBuilding = pTerrain->getBuilding();
+            if (pBuilding != nullptr &&
+                pBuilding->usesMapLayer() &&
+                pBuilding->Building::getX() == x &&
+                pBuilding->Building::getY() == y)
+            {
+                pBuilding->setPosition(pos);
+            }
+            Unit* pUnit = pTerrain->getUnit();
+            if (pUnit != nullptr)
+            {
+                pUnit->setPosition(pos);
+                pUnit->showRanges();
+            }
+        }
+    }
+    setSize(HexGrid::mapActorWidth(width, heigth, m_imagesize), HexGrid::mapPixelHeight(heigth, m_imagesize));
+}
+
 void GameMap::showGrid(bool show)
 {
     for (auto & sprite : m_gridSprites)
@@ -2906,7 +3400,8 @@ void GameMap::showGrid(bool show)
         sprite->detachAndRemove();
     }
     m_gridSprites.clear();
-    if (show)
+    // the hex tiles have their own outline. The grid lines only fit the square grid.
+    if (show && !HexGrid::enabled())
     {
         qint32 mapWidth = getMapWidth();
         qint32 mapHeight = getMapHeight();

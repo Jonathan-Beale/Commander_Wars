@@ -1,3 +1,4 @@
+#include "resource_management/movementtablemanager.h"
 #include "coreengine/filesupport.h"
 #include "coreengine/globalutils.h"
 #include "coreengine/audiomanager.h"
@@ -709,12 +710,15 @@ qint32 Player::getBuildingListCount(const QStringList & list, bool whitelist)
     
     if (m_pMap != nullptr)
     {
-        for (qint32 y = 0; y < m_pMap->getMapHeight(); y++)
+        // this runs for the defeat checks of each player after each action: no reference counting for each field
+        const qint32 mapHeigth = m_pMap->getMapHeight();
+        const qint32 mapWidth = m_pMap->getMapWidth();
+        for (qint32 y = 0; y < mapHeigth; y++)
         {
-            for (qint32 x = 0; x < m_pMap->getMapWidth(); x++)
+            for (qint32 x = 0; x < mapWidth; x++)
             {
-                spBuilding pBuilding = m_pMap->getSpTerrain(x, y)->getSpBuilding();
-                if (pBuilding.get() != nullptr)
+                Building* pBuilding = m_pMap->getTerrain(x, y)->getBuilding();
+                if (pBuilding != nullptr)
                 {
                     if (pBuilding->getOwner() == this)
                     {
@@ -740,12 +744,14 @@ qint32 Player::getUnitCount(const QString & unitID) const
 {
     qint32 ret = 0;
     
-    for (qint32 y = 0; y < m_pMap->getMapHeight(); y++)
+    const qint32 mapHeigth = m_pMap->getMapHeight();
+    const qint32 mapWidth = m_pMap->getMapWidth();
+    for (qint32 y = 0; y < mapHeigth; y++)
     {
-        for (qint32 x = 0; x < m_pMap->getMapWidth(); x++)
+        for (qint32 x = 0; x < mapWidth; x++)
         {
-            spUnit pUnit = m_pMap->getSpTerrain(x, y)->getSpUnit();
-            if (pUnit.get() != nullptr)
+            Unit* pUnit = m_pMap->getTerrain(x, y)->getUnit();
+            if (pUnit != nullptr)
             {
                 if (pUnit->getOwner() == this)
                 {
@@ -753,7 +759,7 @@ qint32 Player::getUnitCount(const QString & unitID) const
                     {
                         ret++;
                     }
-                    ret += getUnitCount(pUnit.get(), unitID);
+                    ret += getUnitCount(pUnit, unitID);
                 }
             }
         }
@@ -799,6 +805,7 @@ qint32 Player::getTeam() const
 
 void Player::setTeam(const qint32 value)
 {
+    MovementTableManager::clearBaseMovementPointsCache();
     m_team = value;
 }
 
@@ -1147,14 +1154,14 @@ void Player::addVisionFieldInternal(qint32 x, qint32 y, qint32 duration, bool di
         x < m_FogVisionFields.size() &&
         y < m_FogVisionFields[x].size())
     {
-        m_FogVisionFields[x][y].m_visionType = visionType;
-        if (duration > m_FogVisionFields[x][y].m_duration)
+        m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType = visionType;
+        if (duration > m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration)
         {
-            m_FogVisionFields[x][y].m_duration = duration;
+            m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration = duration;
         }
-        if (m_FogVisionFields[x][y].m_directView == false)
+        if (m_FogVisionFields[HexGrid::wrapX(x)][y].m_directView == false)
         {
-            m_FogVisionFields[x][y].m_directView = directView;
+            m_FogVisionFields[HexGrid::wrapX(x)][y].m_directView = directView;
         }
     }
 }
@@ -1186,22 +1193,29 @@ void Player::updatePlayerVision(bool reduceTimer, bool forceVisionReset)
     {
         for (qint32 y = 0; y < heigth; y++)
         {
-            if (reduceTimer && m_FogVisionFields[x][y].m_duration > 0)
+            if (reduceTimer && m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration > 0)
             {
-                m_FogVisionFields[x][y].m_duration -= 1;
+                m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration -= 1;
             }
-            qint32 duration = m_FogVisionFields[x][y].m_duration;
+            qint32 duration = m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration;
             if (duration <= 0 || forceVisionReset)
             {
-                if (m_FogVisionFields[x][y].m_visionType != GameEnums::VisionType::VisionType_Shrouded)
+                if (m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType != GameEnums::VisionType::VisionType_Shrouded)
                 {
                     auto fog = getDefaultClearVisionType(m_pMap->getGameRules()->getFogMode());
-                    m_FogVisionFields[x][y].m_visionType = fog;
+                    m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType = fog;
                 }
-                m_FogVisionFields[x][y].m_duration = 0;
-                m_FogVisionFields[x][y].m_directView = false;
+                m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration = 0;
+                m_FogVisionFields[HexGrid::wrapX(x)][y].m_directView = false;
             }
         }
+    }
+    if (m_pMap->getGameRules()->getFogMode() == GameEnums::Fog_Off &&
+        !qEnvironmentVariableIsSet("COW_FULL_VISION_UPDATE"))
+    {
+        // Without fog all fields count as visible whatever is stored here, see getFieldVisible and getFieldVisibleType.
+        // Collecting the vision of all units and buildings after each action is wasted time then.
+        return;
     }
     bool visionBlock = m_pMap->getGameRules()->getVisionBlock();
     // create vision for all units and terrain
@@ -1234,7 +1248,7 @@ void Player::updatePlayerVision(bool reduceTimer, bool forceVisionReset)
                             ((pUnit != nullptr) && visionHide &&
                              !pUnit->useTerrainHide() && !pUnit->isStatusStealthed()))
                         {
-                            m_FogVisionFields[point.x() + x][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
+                            m_FogVisionFields[HexGrid::wrapX(point.x() + x)][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
                         }
                     }
                 }
@@ -1248,7 +1262,7 @@ void Player::updatePlayerVision(bool reduceTimer, bool forceVisionReset)
                 qint32 visionRange = pBuilding->getVision();
                 if (visionRange >= 0)
                 {
-                    m_FogVisionFields[x][y].m_visionType = GameEnums::VisionType_Clear;
+                    m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType = GameEnums::VisionType_Clear;
                     spQmlVectorPoint pPoints;
                     if (visionBlock)
                     {
@@ -1269,7 +1283,7 @@ void Player::updatePlayerVision(bool reduceTimer, bool forceVisionReset)
                                 ((pUnit != nullptr) && visionHide &&
                                  !pUnit->useTerrainHide() && !pUnit->isStatusStealthed()))
                             {
-                                m_FogVisionFields[point.x() + x][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
+                                m_FogVisionFields[HexGrid::wrapX(point.x() + x)][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
                             }
                         }
                     }
@@ -1308,12 +1322,12 @@ void Player::updatePlayerVision(bool reduceTimer, bool forceVisionReset)
                             ((pOtherUnit != nullptr) && visionHide &&
                              !pOtherUnit->useTerrainHide() && !pOtherUnit->isStatusStealthed()))
                         {
-                            m_FogVisionFields[point.x() + x][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
+                            m_FogVisionFields[HexGrid::wrapX(point.x() + x)][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
                         }
                         // terrain hides are visible if we're near it.
-                        else if (((qAbs(point.x()) + qAbs(point.y())) <= 1))
+                        else if (HexGrid::distance(point.x(), point.y()) <= 1)
                         {
-                            m_FogVisionFields[point.x() + x][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
+                            m_FogVisionFields[HexGrid::wrapX(point.x() + x)][point.y() + y].m_visionType = GameEnums::VisionType_Clear;
                         }
                         else
                         {
@@ -1344,7 +1358,7 @@ bool Player::getFieldVisible(qint32 x, qint32 y)
             {
                 if (m_FogVisionFields.size() > 0)
                 {
-                    return (m_FogVisionFields[x][y].m_visionType == GameEnums::VisionType_Clear);
+                    return (m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType == GameEnums::VisionType_Clear);
                 }
                 else
                 {
@@ -1378,7 +1392,7 @@ GameEnums::VisionType Player::getFieldVisibleType(qint32 x, qint32 y) const
                     {
                         if (m_FogVisionFields.size() > 0)
                         {
-                            return m_FogVisionFields[x][y].m_visionType;
+                            return m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType;
                         }
                     }
                     return GameEnums::VisionType_Shrouded;
@@ -1399,7 +1413,7 @@ bool Player::getFieldDirectVisible(qint32 x, qint32 y)
         x < m_FogVisionFields.size() &&
         y < m_FogVisionFields[x].size())
     {
-        return m_FogVisionFields[x][y].m_directView;
+        return m_FogVisionFields[HexGrid::wrapX(x)][y].m_directView;
     }
     else
     {
@@ -2337,9 +2351,9 @@ void Player::serializeObject(QDataStream& pStream, bool forHash) const
         {
             for (qint32 y = 0; y < heigth; y++)
             {
-                pStream << static_cast<qint32>(m_FogVisionFields[x][y].m_visionType);
-                pStream << m_FogVisionFields[x][y].m_duration;
-                pStream << m_FogVisionFields[x][y].m_directView;
+                pStream << static_cast<qint32>(m_FogVisionFields[HexGrid::wrapX(x)][y].m_visionType);
+                pStream << m_FogVisionFields[HexGrid::wrapX(x)][y].m_duration;
+                pStream << m_FogVisionFields[HexGrid::wrapX(x)][y].m_directView;
             }
         }
     }
@@ -2474,7 +2488,7 @@ void Player::deserializer(QDataStream& pStream, bool fast)
                     {
                         pStream >> directView;
                     }
-                    m_FogVisionFields[x][y] = VisionFieldInfo(value, duration, directView);
+                    m_FogVisionFields[HexGrid::wrapX(x)][y] = VisionFieldInfo(value, duration, directView);
                 }
             }
         }

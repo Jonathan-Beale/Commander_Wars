@@ -1,3 +1,4 @@
+#include "coreengine/hexgrid.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/gameconsole.h"
 #include "coreengine/globalutils.h"
@@ -219,6 +220,10 @@ Building* GameAction::getTargetBuilding()
 void GameAction::setMovepath(const QVector<QPoint> points, qint32 fuelCost)
 {
     m_Movepath = points;
+    for (auto & point : m_Movepath)
+    {
+        point.setX(HexGrid::wrapX(point.x()));
+    }
     m_costs = fuelCost;
 }
 
@@ -228,7 +233,7 @@ void GameAction::setMovepath(const std::vector<QPoint> & points, qint32 fuelCost
     m_Movepath.reserve(points.size());
     for (auto & point : points)
     {
-        m_Movepath.append(point);
+        m_Movepath.append(QPoint(HexGrid::wrapX(point.x()), point.y()));
     }
     m_costs = fuelCost;
 }
@@ -447,6 +452,7 @@ quint32 GameAction::getSeed() const
 
 void GameAction::setTarget(QPoint point)
 {
+    point.setX(HexGrid::wrapX(point.x()));
     m_target = point;
 }
 
@@ -573,7 +579,7 @@ void GameAction::deserializeObject(QDataStream& stream)
     {
         QPoint point;
         stream >> point;
-        m_Movepath.append(point);
+        m_Movepath.append(QPoint(HexGrid::wrapX(point.x()), point.y()));
     }
     stream >> m_inputStep;
     stream >> m_costs;

@@ -65,7 +65,8 @@ var UNIT =
     getActions : function(unit, map)
     {
         // returns a string id list of the actions this unit can perform
-        return Global[unit.getUnitID()].actionList;
+        // all units can spend their promotions, see UNITRANKINGSYSTEM
+        return Global[unit.getUnitID()].actionList.concat(["ACTION_PROMOTE"]);
     },
 
     getName : function(unit, map)

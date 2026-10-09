@@ -44,10 +44,7 @@ var Constructor = function()
     this.getUnloadFields = function(action, transportUnitIdx, map)
     {
         var targetField = action.getActionTarget();
-        var targetFields = [Qt.point(targetField.x + 1, targetField.y),
-                            Qt.point(targetField.x - 1, targetField.y),
-                            Qt.point(targetField.x,     targetField.y - 1),
-                            Qt.point(targetField.x,     targetField.y + 1)];
+        var targetFields = ACTION.getNeighbourFields(targetField);
         var unit = action.getTargetUnit();
         var targetTerrain = map.getTerrain(targetField.x, targetField.y);
         var transportUnit = unit.getLoadedUnit(transportUnitIdx);

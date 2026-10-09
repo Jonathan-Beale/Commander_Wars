@@ -119,9 +119,14 @@ var Constructor = function()
     {
         var turn = map.getCurrentDay();
         var turnLimit = VICTORYRULE_TURNLIMIT_CAPTURE_RACE.getRuleValue(rule, 0, map);
+        if (turn <= turnLimit)
+        {
+            // the winner only matters once the limit is reached. Counting the buildings of all players
+            // for each player after each action is slow on large maps.
+            return GameEnums.DefeatType_Alive;
+        }
         var victoryTeam = VICTORYRULE_TURNLIMIT_CAPTURE_RACE.getWinnerTeam(rule, player, map);
-        if (turn <= turnLimit ||
-            player.getTeam() === victoryTeam)
+        if (player.getTeam() === victoryTeam)
         {
             return GameEnums.DefeatType_Alive;
         }

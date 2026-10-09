@@ -1,3 +1,7 @@
+#include "3rd_party/oxygine-framework/oxygine/UpdateState.h"
+#include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
+#include "3rd_party/oxygine-framework/oxygine/RenderState.h"
+#include "resource_management/movementtablemanager.h"
 #include <QFileInfo>
 #include <QFile>
 
@@ -323,6 +327,14 @@ void Terrain::setSpriteVisibility(bool value)
     {
         m_pTerrainSprite->setVisible(value);
     }
+    if (m_pHexSprite.get() != nullptr)
+    {
+        m_pHexSprite->setVisible(value);
+    }
+    if (m_pHexBorderSprite.get() != nullptr)
+    {
+        m_pHexBorderSprite->setVisible(value);
+    }
     for (auto& sprite : m_pOverlaySprites)
     {
         sprite->setVisible(value);
@@ -561,6 +573,8 @@ QString Terrain::getDescription()
 
 void Terrain::setBaseTerrain(spTerrain terrain)
 {
+    MovementTableManager::clearBaseMovementPointsCache();
+    MovementTableManager::terrainLayoutChanged();
     if (m_pBaseTerrain.get() != nullptr)
     {
         m_pBaseTerrain->detachAndRemove();
@@ -575,9 +589,113 @@ void Terrain::setBaseTerrain(spTerrain terrain)
     }
 }
 
+bool Terrain::useHexSprites() const
+{
+    return HexGrid::enabled() && m_pMap != nullptr && m_x >= 0 && m_y >= 0;
+}
+
+bool Terrain::isVoid() const
+{
+    return m_terrainID == GameMap::VOID_TERRAIN;
+}
+
+bool Terrain::isHexFeature() const
+{
+    return m_pBaseTerrain.get() != nullptr &&
+           (m_terrainID.contains("FOREST") || m_terrainID.contains("MOUNTAIN") || m_terrainID.contains("ROCK"));
+}
+
+void Terrain::applyHexLayout(oxygine::spSprite & pSprite, bool baseSprite, bool hexMasked)
+{
+    if (!useHexSprites())
+    {
+        return;
+    }
+    const qint32 imageSize = GameMap::getImageSize();
+    if (baseSprite && isHexFeature())
+    {
+        // drawn like a building: uncut and moved up a bit, so it overlaps the field behind it
+        pSprite->setY(pSprite->getY() - imageSize / 8);
+    }
+    else if (baseSprite)
+    {
+        // a hex tinted by the terrain type is shown below the terrain sprite
+        QColor color(124, 192, 76);
+        if (m_terrainID.contains("FOREST"))
+        {
+            color = QColor(52, 128, 52);
+        }
+        else if (m_terrainID.contains("MOUNTAIN"))
+        {
+            color = QColor(150, 116, 78);
+        }
+        else if (m_terrainID.contains("RIVER"))
+        {
+            color = QColor(96, 168, 232);
+        }
+        else if (m_terrainID.contains("SEA") || m_terrainID.contains("REAF") || m_terrainID.contains("FOG") || m_terrainID.contains("LAKE"))
+        {
+            color = QColor(60, 110, 210);
+        }
+        else if (m_terrainID.contains("STREET") || m_terrainID.contains("BRIDGE"))
+        {
+            color = QColor(150, 150, 150);
+        }
+        else if (m_terrainID.contains("BEACH") || m_terrainID.contains("DESERT"))
+        {
+            color = QColor(226, 206, 140);
+        }
+        else if (m_terrainID.contains("SNOW"))
+        {
+            color = QColor(235, 240, 245);
+        }
+        else if (m_terrainID.contains("WASTE") || m_terrainID.contains("PIPE") || m_terrainID.contains("WALL"))
+        {
+            color = QColor(130, 118, 100);
+        }
+        if (m_pHexSprite.get() != nullptr)
+        {
+            m_pHexSprite->detachAndRemove();
+        }
+        m_pHexSprite = GameMap::createHexTileSprite(color);
+        m_pHexSprite->setPriority(static_cast<qint32>(DrawPriority::Terrain));
+        addChild(m_pHexSprite);
+        if (m_pHexBorderSprite.get() != nullptr)
+        {
+            m_pHexBorderSprite->detachAndRemove();
+        }
+        // keeps the grid visible above the terrain sprite
+        m_pHexBorderSprite = GameMap::createHexTileSprite(QColor(40, 60, 40, 110), GameMap::HexGraphic_Border);
+        m_pHexBorderSprite->setPriority(static_cast<qint32>(DrawPriority::TerrainOverlay));
+        addChild(m_pHexBorderSprite);
+        if (!hexMasked)
+        {
+            // fallback: show the square sprite as icon inside of the hex
+            static constexpr float hexSpriteScale = 0.6f;
+            pSprite->setScale(pSprite->getScaleX() * hexSpriteScale);
+            pSprite->setPosition((imageSize - pSprite->getScaledWidth()) / 2, imageSize * (1.0f + hexSpriteScale) / 2.0f - pSprite->getScaledHeight());
+        }
+    }
+    else
+    {
+        // no auto tiling in the prototype
+        pSprite->setAlpha(0);
+    }
+}
+
 void Terrain::unloadSprites()
 {
     // unload old stuff
+    if (m_pHexSprite.get() != nullptr)
+    {
+        m_pHexSprite->detachAndRemove();
+        m_pHexSprite.reset();
+    }
+    if (m_pHexBorderSprite.get() != nullptr)
+    {
+        m_pHexBorderSprite->detachAndRemove();
+        m_pHexBorderSprite.reset();
+    }
     if (m_pTerrainSprite.get() != nullptr)
     {
         m_pTerrainSprite->detachAndRemove();
@@ -655,6 +773,17 @@ void Terrain::loadBaseSprite(const QString & spriteID, qint32 frameTime, qint32 
 {
     TerrainManager* pTerrainManager = TerrainManager::getInstance();
     oxygine::ResAnim* pAnim = pTerrainManager->getResAnim(spriteID, oxygine::error_policy::ep_ignore_error);
+    bool hexMasked = false;
+    if (pAnim != nullptr && useHexSprites() && !isHexFeature())
+    {
+        // hex grid prototype: use the terrain sprite cut to the hex shape
+        oxygine::ResAnim* pMaskedAnim = GameMap::getHexMaskedAnim(pAnim);
+        if (pMaskedAnim != nullptr)
+        {
+            pAnim = pMaskedAnim;
+            hexMasked = true;
+        }
+    }
     if (pAnim != nullptr)
     {
         oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
@@ -686,6 +815,7 @@ void Terrain::loadBaseSprite(const QString & spriteID, qint32 frameTime, qint32 
                 pSprite->setColorTable(pPaletteAnim, true);
             }
         }
+        applyHexLayout(pSprite, true, hexMasked);
         addChild(pSprite);
         m_terrainSpriteName = spriteID;
         m_pTerrainSprite = pSprite;
@@ -1024,6 +1154,7 @@ void Terrain::loadOverlaySprite(const QString & spriteID, qint32 startFrame, qin
             pSprite->setColorTable(pPaletteAnim, true);
         }
     }
+    applyHexLayout(pSprite, false, false);
     addChild(pSprite);
     m_pOverlaySprites.append(pSprite);
 }
@@ -1077,6 +1208,12 @@ qint32 Terrain::getMovementcostModifier(Unit* pUnit, qint32 x, qint32 y, qint32 
 {
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString function1 = "getMovementcostModifier";
+    // called for each field of each path search. The hook of the base terrain returns 0.
+    static const QString baseTerrain = "TERRAIN";
+    if (pInterpreter->isDefaultFunction(m_terrainID, baseTerrain, function1))
+    {
+        return 0;
+    }
     QJSValueList args({m_jsThis,
                        JsThis::getJsThis(pUnit),
                        x,
@@ -1170,6 +1307,8 @@ qint32 Terrain::getDefense(Unit* pUnit)
 
 void Terrain::setBuilding(spBuilding pBuilding)
 {
+    MovementTableManager::clearBaseMovementPointsCache();
+    MovementTableManager::terrainLayoutChanged();
     if (m_Building.get() != nullptr)
     {
         removeBuilding();
@@ -1194,7 +1333,7 @@ void Terrain::addBuildingSprite(spBuilding pBuilding)
     if (m_pMap != nullptr && m_Building->usesMapLayer())
     {
         m_Building->setPriority(getMapTerrainDrawPriority() + static_cast<qint32>(ExtraDrawPriority::BuildingLayer));
-        m_Building->setPosition(Terrain::m_x * GameMap::getImageSize(), Terrain::m_y * GameMap::getImageSize());
+        m_Building->setPosition(HexGrid::fieldToScreen(Terrain::m_x, Terrain::m_y, GameMap::getImageSize()));
         if (Terrain::m_y >= 0)
         {
             m_pMap->getRowActor(Terrain::m_y + 1)->addChild(m_Building);
@@ -1210,6 +1349,8 @@ void Terrain::addBuildingSprite(spBuilding pBuilding)
 
 void Terrain::removeBuilding()
 {
+    MovementTableManager::clearBaseMovementPointsCache();
+    MovementTableManager::terrainLayoutChanged();
     if (m_Building.get() != nullptr)
     {
         if (m_Building->getTerrain() == this)
@@ -1303,7 +1444,7 @@ void Terrain::setUnit(spUnit pUnit)
         // add Terrain to unit and unit to drawing actor
         pUnit->setPriority(getMapTerrainDrawPriority());
         pUnit->setTerrain(m_pMap->getTerrain(Terrain::m_x, Terrain::m_y));
-        pUnit->setPosition(Terrain::m_x * GameMap::getImageSize(), Terrain::m_y * GameMap::getImageSize());
+        pUnit->setPosition(HexGrid::fieldToScreen(Terrain::m_x, Terrain::m_y, GameMap::getImageSize()));
         if (m_pMap)
         {
             Player* pPlayer = m_pMap->getCurrentViewPlayer();
@@ -1452,9 +1593,77 @@ void Terrain::setY(const qint32 value)
     }
 }
 
+bool Terrain::isOnScreen(const oxygine::RenderState& parentRS, qreal x, qreal y)
+{
+    if (m_viewClipping)
+    {
+        oxygine::Stage* pStage = oxygine::Stage::getStage().get();
+        if (pStage != nullptr)
+        {
+            // buildings and units are drawn above and next to their field, so some fields around the screen are drawn as well
+            const QPointF pos = parentRS.transform.map(QPointF(x, y));
+            const qreal border = GameMap::getImageSize() * qAbs(parentRS.transform.m11()) * 5;
+            if (pos.x() + border < 0 ||
+                pos.y() + border < 0 ||
+                pos.x() - border > pStage->getWidth() ||
+                pos.y() - border > pStage->getHeight())
+            {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+const oxygine::UpdateState* Terrain::updateVisible(const oxygine::UpdateState& us, quint32 lastRenderFrame,
+                                                   qint64 & lastUpdateTime, oxygine::UpdateState & catchUp)
+{
+    if (!wasRendered(lastRenderFrame))
+    {
+        return nullptr;
+    }
+    const qint64 now = us.time.count();
+    const oxygine::UpdateState* pState = &us;
+    if (lastUpdateTime >= 0 && now - lastUpdateTime > us.dt.count() * 2 && now > lastUpdateTime)
+    {
+        // updates were skipped: the animations continue where they would be without the pause
+        catchUp = us;
+        catchUp.dt = oxygine::timeMS(now - lastUpdateTime);
+        pState = &catchUp;
+    }
+    lastUpdateTime = now;
+    return pState;
+}
+
+void Terrain::render(const oxygine::RenderState& parentRS)
+{
+    // Terrain::getX and getY are the field on the map, the position on the screen is the one of the actor
+    if (!isOnScreen(parentRS, oxygine::Actor::getX(), oxygine::Actor::getY()))
+    {
+        return;
+    }
+    m_lastRenderFrame = m_renderFrame;
+    Tooltip::render(parentRS);
+}
+
+void Terrain::update(const oxygine::UpdateState& us)
+{
+    oxygine::UpdateState catchUp;
+    const oxygine::UpdateState* pState = updateVisible(us, m_lastRenderFrame, m_lastUpdateTime, catchUp);
+    if (pState != nullptr)
+    {
+        Tooltip::update(*pState);
+    }
+}
+
 qint32 Terrain::getVision(Player* pPlayer)
 {
     Interpreter* pInterpreter = Interpreter::getInstance();
+    // this gets called for each field and player after each action. Nearly all terrains use the default: no vision.
+    if (pInterpreter->isDefaultFunction(m_terrainID, "TERRAIN", "getVision"))
+    {
+        return -1;
+    }
     QString function1 = "getVision";
     QJSValueList args({JsThis::getJsThis(pPlayer),
                        m_jsThis,

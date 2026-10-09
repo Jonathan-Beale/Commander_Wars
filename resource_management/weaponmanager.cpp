@@ -33,18 +33,33 @@ float WeaponManager::getBaseDamage(const QString & weaponID, Unit* pDefender)
 
 float WeaponManager::getEnviromentDamage(const QString & weaponID, const QString & terrainID)
 {
+    // The damage tables of the weapons don't change. The ai asks for each field of the map for each unit,
+    // so the results are stored instead of calling the script each time.
+    static thread_local QHash<QString, QHash<QString, float>> cache;
+    static thread_local Interpreter* pCacheInterpreter = nullptr;
     Interpreter* pInterpreter = Interpreter::getInstance();
+    if (pCacheInterpreter != pInterpreter)
+    {
+        // the scripts were loaded again
+        cache.clear();
+        pCacheInterpreter = pInterpreter;
+    }
+    auto & weaponCache = cache[weaponID];
+    auto iter = weaponCache.constFind(terrainID);
+    if (iter != weaponCache.constEnd())
+    {
+        return iter.value();
+    }
     QString function1 = "getEnviromentDamage";
     QJSValueList args({terrainID});
     QJSValue erg = pInterpreter->doFunction(weaponID, function1, args);
+    float damage = -1.0f;
     if (erg.isNumber())
     {
-        return erg.toNumber();
+        damage = erg.toNumber();
     }
-    else
-    {
-        return -1.0f;
-    }
+    weaponCache.insert(terrainID, damage);
+    return damage;
 }
 
 QString WeaponManager::getWeaponName(const QString & id)

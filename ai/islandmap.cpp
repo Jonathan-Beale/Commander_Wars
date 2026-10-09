@@ -1,3 +1,7 @@
+#include "coreengine/perftrace.h"
+#include "resource_management/unitspritemanager.h"
+#include "resource_management/movementtablemanager.h"
+#include <QHash>
 #include <QCoreApplication>
 
 #include "ai/islandmap.h"
@@ -32,44 +36,114 @@ IslandMap::IslandMap(GameMap* pMap, const QString & unitID, Player* pOwner, cons
         {
             m_Islands.push_back(std::vector<qint32>(heigth, UNKNOWN));
         }
-        spUnit pUnit = MemoryManagement::create<Unit>(unitID, pOwner, false, pMap);
-        pUnit->setIgnoreUnitCollision(true);
         if (m_MovementType.isEmpty())
         {
-            m_MovementType = pUnit->getMovementType();
+            m_MovementType = UnitSpriteManager::getInstance()->getMovementType(unitID);
         }
+        // The islands only depend on the terrains of the map, so they are reused until a terrain or building changes.
+        // The ai drops its island maps several times each turn.
+        struct CachedIslands
+        {
+            quint64 version{0};
+            qint32 width{0};
+            qint32 heigth{0};
+            bool wrap{false};
+            std::vector<std::vector<qint32>> islands;
+        };
+        static QHash<QString, CachedIslands> islandCache;
+        static const bool useCache = !qEnvironmentVariableIsSet("COW_NO_ISLAND_CACHE");
+        const quint64 version = MovementTableManager::getTerrainLayoutVersion();
+        const QString key = QString::number(reinterpret_cast<quintptr>(pMap)) + ";" +
+                            QString::number(reinterpret_cast<quintptr>(pOwner)) + ";" + m_MovementType +
+                            // islands with a given movement type are built with the movement of this unit
+                            (movementType.isEmpty() ? QString() : ";" + unitID);
+        if (useCache)
+        {
+            auto iter = islandCache.constFind(key);
+            if (iter != islandCache.constEnd() &&
+                iter->version == version &&
+                iter->width == width &&
+                iter->heigth == heigth &&
+                iter->wrap == HexGrid::wraps())
+            {
+                m_Islands = iter->islands;
+                return;
+            }
+        }
+        PerfTrace::mark("ai: island build " + m_MovementType);
+        // the unit is only needed to build the islands
+        spUnit pUnit = MemoryManagement::create<Unit>(unitID, pOwner, false, pMap);
+        pUnit->setIgnoreUnitCollision(true);
+        // The costs of movement types like hovercrafts are calculated by a script for each step.
+        // They depend on the field which gets entered and on the kind of terrain the unit comes from,
+        // so each field only needs to be asked once for each kind of terrain next to it.
+        QHash<QString, bool> enterCache;
+        auto canEnter = [this, &pUnit, &enterCache](qint32 x, qint32 y, qint32 curX, qint32 curY)
+        {
+            Terrain* pCurrent = m_pMap->getTerrain(curX, curY);
+            const QString key = QString::number(x) + ";" + QString::number(y) + ";" + pCurrent->getID() + ";" + pCurrent->getBaseTerrainID();
+            auto iter = enterCache.constFind(key);
+            if (iter != enterCache.constEnd())
+            {
+                return iter.value();
+            }
+            // the modifiers of co's and weather never change if a field can be entered
+            const bool enter = pUnit->getBaseMovementCosts(x, y, curX, curY) > 0;
+            enterCache.insert(key, enter);
+            return enter;
+        };
         qint32 currentIsland = 0;
-
+        // flood fill: each field is visited once, instead of running a path finding over the whole map for each island
+        std::vector<QPoint> openFields;
+        const qint32 neighbourCount = HexGrid::neighbourCount();
         Interpreter* pInterpreter = Interpreter::getInstance();
         for (qint32 x = 0; x < width; x++)
         {
+            // Pumping the event loop is only safe outside a script call. Building an
+            // island map from a js ai hook is otherwise a hard assert, and re-entering
+            // the event loop there would be wrong even without one.
+            if (!pInterpreter->getInJsCall())
+            {
+                pInterpreter->threadProcessEvents();
+            }
             for (qint32 y = 0; y < heigth; y++)
             {
-                if (m_Islands[x][y] < 0)
-                {                    
-                    if (pUnit->canMoveOver(x, y))
+                if (m_Islands[x][y] < 0 && pUnit->canMoveOver(x, y))
+                {
+                    m_Islands[x][y] = currentIsland;
+                    openFields.push_back(QPoint(x, y));
+                    while (!openFields.empty())
                     {
-                        // Pumping the event loop is only safe outside a script call. Building an
-                        // island map from a js ai hook is otherwise a hard assert, and re-entering
-                        // the event loop there would be wrong even without one.
-                        if (!pInterpreter->getInJsCall())
+                        const QPoint current = openFields.back();
+                        openFields.pop_back();
+                        for (qint32 i = 0; i < neighbourCount; ++i)
                         {
-                            pInterpreter->threadProcessEvents();
+                            const qint32 nextX = HexGrid::wrapX(current.x() + HexGrid::neighbours[i].x());
+                            const qint32 nextY = current.y() + HexGrid::neighbours[i].y();
+                            if (nextX >= 0 && nextX < width &&
+                                nextY >= 0 && nextY < heigth &&
+                                m_Islands[nextX][nextY] < 0 &&
+                                canEnter(nextX, nextY, current.x(), current.y()))
+                            {
+                                m_Islands[nextX][nextY] = currentIsland;
+                                openFields.push_back(QPoint(nextX, nextY));
+                            }
                         }
-                        UnitPathFindingSystem pfs(m_pMap, pUnit.get());
-                        pfs.setMovepoints(-2);
-                        pfs.setFast(true);
-                        pfs.setStartPoint(x, y);
-                        pfs.explore();
-                        auto nodes = pfs.getAllNodePointsFast();
-                        for (auto & node : nodes)
-                        {
-                            m_Islands[node.x()][node.y()] = currentIsland;
-                        }
-                        currentIsland++;
                     }
+                    currentIsland++;
                 }
             }
+        }
+        PerfTrace::mark("ai: island built");
+        if (useCache)
+        {
+            CachedIslands entry;
+            entry.version = version;
+            entry.width = width;
+            entry.heigth = heigth;
+            entry.wrap = HexGrid::wraps();
+            entry.islands = m_Islands;
+            islandCache.insert(key, entry);
         }
     }
 }
@@ -108,7 +182,7 @@ void IslandMap::getValueOnIsland(qint32 island, qint32 &ownValue, qint32 & enemy
         {
             for (qint32 y = 0; y < heigth; y++)
             {
-                if (m_Islands[x][y] == island)
+                if (m_Islands[HexGrid::wrapX(x)][y] == island)
                 {
                     Unit* pUnit = m_pMap->getTerrain(x, y)->getUnit();
                     if (pUnit != nullptr)
@@ -135,7 +209,7 @@ void IslandMap::show()
     {
         for (qint32 y = 0; y < m_Islands[x].size(); ++y)
         {
-            if (m_Islands[x][y] > UNKNOWN)
+            if (m_Islands[HexGrid::wrapX(x)][y] > UNKNOWN)
             {
                 oxygine::spColorRectSprite sprite = MemoryManagement::create<oxygine::ColorRectSprite>();
                 sprite->setSize(GameMap::getImageSize(), GameMap::getImageSize());

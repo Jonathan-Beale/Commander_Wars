@@ -290,8 +290,8 @@ void BaseGamemenu::autoFocus()
                         oxygine::Stage::getStage()->getHeight() - m_autoScrollBorder.height() - m_autoScrollBorder.y());
     float zoom = GameMap::MaxZoomLimit;
     const auto imageSize = GameMap::getImageSize();
-    qint32 mapWidth = zoom * imageSize * m_pMap->getMapWidth();
-    qint32 mapHeight = zoom * imageSize * m_pMap->getMapHeight();
+    qint32 mapWidth = zoom * HexGrid::mapPixelWidth(m_pMap->getMapWidth(), m_pMap->getMapHeight(), imageSize);
+    qint32 mapHeight = zoom * HexGrid::mapPixelHeight(m_pMap->getMapHeight(), imageSize);
     while (zoom >= GameMap::MinZoomLimit)
     {
         if (mapWidth <= availableSize.width() &&
@@ -302,8 +302,8 @@ void BaseGamemenu::autoFocus()
         else
         {
             zoom /= Settings::getInstance()->getZoomModifier();
-            mapWidth = zoom * imageSize * m_pMap->getMapWidth();
-            mapHeight = zoom * imageSize * m_pMap->getMapHeight();
+            mapWidth = zoom * HexGrid::mapPixelWidth(m_pMap->getMapWidth(), m_pMap->getMapHeight(), imageSize);
+            mapHeight = zoom * HexGrid::mapPixelHeight(m_pMap->getMapHeight(), imageSize);
         }
     }
     m_pMap->setScale(zoom);
@@ -394,8 +394,9 @@ QPoint BaseGamemenu::getMousePos(qint32 x, qint32 y)
     {
         qint32 mapX = m_pMap->getX() + m_mapSliding->getX() + m_mapSlidingActor->getX();
         qint32 mapY = m_pMap->getY() + m_mapSliding->getY() + m_mapSlidingActor->getY();
-        qint32 mousePosX = x * (GameMap::getImageSize() * m_pMap->getZoom()) + mapX + (GameMap::getImageSize() * m_pMap->getZoom()) / 2;
-        qint32 mousePosY = y * (GameMap::getImageSize() * m_pMap->getZoom()) + mapY + (GameMap::getImageSize() * m_pMap->getZoom()) / 2;
+        const QPoint fieldPos = m_pMap->getShownFieldPosition(x, y);
+        qint32 mousePosX = fieldPos.x() * m_pMap->getZoom() + mapX + (GameMap::getImageSize() * m_pMap->getZoom()) / 2;
+        qint32 mousePosY = fieldPos.y() * m_pMap->getZoom() + mapY + (GameMap::getImageSize() * m_pMap->getZoom()) / 2;
         return QPoint(mousePosX, mousePosY);
     }
     return QPoint(0, 0);
@@ -444,7 +445,7 @@ void BaseGamemenu::calcNewMousePosition(qint32 x, qint32 y)
             pApp->cursor().setPos(curPos);
         }
 #endif
-        m_Cursor->updatePosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+        m_Cursor->setMapPoint(x, y);
     }
 }
 

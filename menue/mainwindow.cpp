@@ -4,6 +4,7 @@
 #include "3rd_party/oxygine-framework/oxygine/actor/Button.h"
 
 #include "menue/mainwindow.h"
+#include "coreengine/perftrace.h"
 #include "menue/campaignmenu.h"
 #include "menue/gamemenue.h"
 #include "menue/editormenue.h"
@@ -56,8 +57,13 @@ Mainwindow::Mainwindow(const QString & initialView)
     pApp->pauseRendering();
     Interpreter::setCppOwnerShip(this);
     CONSOLE_PRINT("Entering Main Menue", GameConsole::eDEBUG);
+    PerfTrace::mark("main menu: create");
 
 
+    if (HexGrid::enabled())
+    {
+        GameMap::importHexMaps();
+    }
     // load background
     changeBackground("mainmenu");
 
@@ -431,6 +437,7 @@ void Mainwindow::restartGame()
 
 void Mainwindow::onEnter()
 {
+    PerfTrace::mark("main menu: ready");
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString object = "Init";
     QString func = "main";

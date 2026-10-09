@@ -1,3 +1,4 @@
+#include "coreengine/hexgrid.h"
 #include "3rd_party/oxygine-framework/oxygine/actor/ColorRectSprite.h"
 #include "3rd_party/oxygine-framework/oxygine/res/ResAnim.h"
 #include "3rd_party/oxygine-framework/oxygine/TouchEvent.h"
@@ -25,9 +26,8 @@ Minimap::Minimap()
         oxygine::TouchEvent* pTouchEvent = oxygine::safeCast<oxygine::TouchEvent*>(pEvent);
         if (pTouchEvent != nullptr)
         {
-            qint32 x = pTouchEvent->localPosition.x() / IMAGE_SIZE;
-            qint32 y = pTouchEvent->localPosition.y() / IMAGE_SIZE;
-            emit clicked(x, y, false);
+            const QPoint field = HexGrid::screenToField(pTouchEvent->localPosition.x(), pTouchEvent->localPosition.y(), IMAGE_SIZE);
+            emit clicked(field.x(), field.y(), false);
         }
     });
 }
@@ -54,7 +54,7 @@ void Minimap::updateMinimap(const GameMap* pMap, bool useVision)
         qint32 width = static_cast<qint32>(pMap->getMapWidth());
         qint32 heigth = static_cast<qint32>(pMap->getMapHeight());
         qint32 size = width * heigth;
-        setSize(IMAGE_SIZE * width, IMAGE_SIZE * heigth);
+        setSize(HexGrid::mapPixelWidth(width, heigth, IMAGE_SIZE), HexGrid::mapPixelHeight(heigth, IMAGE_SIZE));
         if (size != m_Items.length())
         {
             clear();
@@ -89,7 +89,7 @@ void Minimap::updateMinimap(const GameMap* pMap, bool useVision)
                         {
                             oxygine::spColorRectSprite pSprite = MemoryManagement::create<oxygine::ColorRectSprite>();
                             pSprite->setColor(Qt::black);
-                            pSprite->setPosition(x * IMAGE_SIZE, y * IMAGE_SIZE);
+                            pSprite->setPosition(HexGrid::fieldToScreen(x, y, IMAGE_SIZE));
                             pSprite->setSize(IMAGE_SIZE, IMAGE_SIZE);
                             addChild(pSprite);
                             if (m_Items[item].background.get())
@@ -140,7 +140,7 @@ void Minimap::updateMinimap(const GameMap* pMap, bool useVision)
                                     {
                                         pSprite->setResAnim(pAnim);
                                     }
-                                    pSprite->setPosition(x * IMAGE_SIZE, y * IMAGE_SIZE);
+                                    pSprite->setPosition(HexGrid::fieldToScreen(x, y, IMAGE_SIZE));
                                     if (pAnim->getWidth() > 0)
                                     {
                                         pSprite->setScale(static_cast<float>(IMAGE_SIZE) / static_cast<float>(pAnim->getWidth()));
@@ -176,7 +176,7 @@ void Minimap::updateMinimap(const GameMap* pMap, bool useVision)
                                 {
                                     pSprite->setResAnim(pAnim);
                                 }
-                                pSprite->setPosition(x * IMAGE_SIZE, y * IMAGE_SIZE);
+                                pSprite->setPosition(HexGrid::fieldToScreen(x, y, IMAGE_SIZE));
                                 if (pAnim->getWidth() > 0)
                                 {
                                     pSprite->setScale(static_cast<float>(IMAGE_SIZE) / static_cast<float>(pAnim->getWidth()));
@@ -216,7 +216,7 @@ void Minimap::updateMinimap(const GameMap* pMap, bool useVision)
                                         }
                                         oxygine::spTween tween2 = oxygine::createTween(TweenToggleVisibility(0, 0.5f), oxygine::timeMS(1000), -1);
                                         pSprite->addTween(tween2);
-                                        pSprite->setPosition(x * IMAGE_SIZE, y * IMAGE_SIZE);
+                                        pSprite->setPosition(HexGrid::fieldToScreen(x, y, IMAGE_SIZE));
                                         if (pAnim->getWidth() > 0)
                                         {
                                             pSprite->setScale(static_cast<float>(IMAGE_SIZE) / static_cast<float>(pAnim->getWidth()));

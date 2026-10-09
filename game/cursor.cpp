@@ -63,7 +63,7 @@ void Cursor::setMapPoint(qint32 x, qint32 y)
                 Mainapp::getInstance()->getAudioManager()->playSound("switchfield.wav");
                 m_MapPointX = x;
                 m_MapPointY = y;
-                setPosition(x * GameMap::getImageSize(), y * GameMap::getImageSize());
+                setPosition(HexGrid::fieldToScreen(x, y, GameMap::getImageSize()));
                 // provide cursor move signal
                 emit sigCursorMoved(m_MapPointX, m_MapPointY);
             }
@@ -78,9 +78,8 @@ void Cursor::updatePosition(qint32 mousePosX, qint32 mousePosY)
         auto* pMenu = m_pMap->getMenu();
         if (pMenu != nullptr)
         {
-            qint32 x = mousePosX / GameMap::getImageSize();
-            qint32 y = mousePosY / GameMap::getImageSize();
-            setMapPoint(x, y);
+            const QPoint field = HexGrid::screenToField(mousePosX, mousePosY, GameMap::getImageSize());
+            setMapPoint(field.x(), field.y());
         }
     }
 }

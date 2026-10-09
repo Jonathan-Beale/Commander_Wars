@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "coreengine/qmlvector.h"
+#include "coreengine/hexgrid.h"
 
 class PathFindingSystem;
 using spPathFindingSystem = std::shared_ptr<PathFindingSystem>;
@@ -25,6 +26,8 @@ public:
         East,
         South,
         North,
+        NorthEast,
+        SouthWest,
         Max,
         Unknown
     };
@@ -192,7 +195,7 @@ public:
      */
     Q_INVOKABLE inline qint32 getIndex(qint32 x, qint32 y) const
     {
-        return x + y * m_width;
+        return HexGrid::wrapX(x) + y * m_width;
     }
     /**
      * @brief get the Path to the given field as vector of qpoints. an empty vector means unreachable
@@ -225,19 +228,30 @@ protected:
     inline qint32 getMoveDirection(const qint32& curX, const qint32& curY,
                                    const qint32& targetX, const qint32& targetY)
     {
-        if (curX > targetX)
+        // on a wrapping map the step over the border is a step to the neighbour as well
+        const qint32 dx = HexGrid::wrapDelta(targetX - curX);
+        const qint32 dy = targetY - curY;
+        if (dx > 0 && dy < 0)
+        {
+            return Directions::NorthEast;
+        }
+        else if (dx < 0 && dy > 0)
+        {
+            return Directions::SouthWest;
+        }
+        else if (dx < 0)
         {
             return Directions::West;
         }
-        else if (curX < targetX)
+        else if (dx > 0)
         {
             return Directions::East;
         }
-        else if (curY < targetY)
+        else if (dy > 0)
         {
             return Directions::South;
         }
-        else if (curY > targetY)
+        else if (dy < 0)
         {
             return Directions::North;
         }

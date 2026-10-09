@@ -21,10 +21,7 @@ var Constructor = function()
         var unit = action.getTargetUnit();
         var owner = unit.getOwner();
         var targetField = action.getActionTarget();
-        var targetFields = [Qt.point(targetField.x + 1, targetField.y),
-                            Qt.point(targetField.x - 1, targetField.y),
-                            Qt.point(targetField.x,     targetField.y - 1),
-                            Qt.point(targetField.x,     targetField.y + 1)];        
+        var targetFields = ACTION.getNeighbourFields(targetField);
         var ret = [];
         // check all neighbour terrains
         for (var i = 0; i < targetFields.length; i++)

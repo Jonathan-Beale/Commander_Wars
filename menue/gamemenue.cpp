@@ -10,6 +10,7 @@
 #include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
 
 #include "menue/gamemenue.h"
+#include "coreengine/perftrace.h"
 #include "menue/victorymenue.h"
 #include "menue/movementplanner.h"
 
@@ -70,6 +71,7 @@ GameMenue::GameMenue(spGameMap pMap, bool saveGame, spNetworkInterface pNetworkI
       m_SaveGame(saveGame),
       m_actionPerformer(m_pMap.get(), this)
 {
+    PerfTrace::mark("game menu: create");
 #ifdef GRAPHICSUPPORT
     setObjectName("GameMenu");
 #endif
@@ -215,6 +217,7 @@ IngameInfoBar* GameMenue::getGameInfoBar()
 
 void GameMenue::onEnter()
 {
+    PerfTrace::mark("game menu: ready");
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString object = "Init";
     QString func = "gameMenu";
@@ -2461,6 +2464,7 @@ void GameMenue::exitGame()
 
 void GameMenue::startGame()
 {
+    PerfTrace::mark("game: start");
     if (m_gameStarted)
     {
         return;

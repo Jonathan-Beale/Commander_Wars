@@ -1,7 +1,12 @@
 #pragma once
 
 #include <QObject>
+
+#include <deque>
+#include <vector>
+
 #include "game/gameaction.h"
+#include "objects/base/label.h"
 #include "game/gamemap.h"
 
 class GameMenue;
@@ -103,6 +108,22 @@ public:
      * @brief nextTurnPlayerTimeout
      */
     Q_INVOKABLE void nextTurnPlayerTimeout();
+    /**
+     * @brief getSimultaneousTurns if the simultaneous turns prototype is active (game rule GAMERULE_SIMULTANEOUS_TURNS).
+     * In this mode all players act during the same day. Each player queues orders. A round executes the next order
+     * of each player as soon as every player has an order queued or ended the day. The player executing the first
+     * order rotates each round. Orders which became impossible are cancelled. The day ends when all players ended it.
+     */
+    Q_INVOKABLE bool getSimultaneousTurns() const;
+    /**
+     * @brief simultaneousAiMayAct if the ai of the given player is currently asked for its next order
+     */
+    bool simultaneousAiMayAct(Player* pPlayer) const;
+    /**
+     * @brief getSimultaneousInfo
+     * @return executed orders, cancelled orders, attacks changed to moves and rounds since the game start separated by ';'
+     */
+    Q_INVOKABLE QString getSimultaneousInfo() const;
 signals:
     void sigPerformAction(spGameAction pGameAction, bool fromAiPipe = false);
     void sigActionPerformed();
@@ -117,6 +138,65 @@ protected:
     void doTrapping(spGameAction & pGameAction);
     void onTriggeringActionFinished();
 private:
+    enum class SimPhase
+    {
+        Inactive,           /**< waiting for the game start */
+        InitialRollover,    /**< start of day processing of the players after the first one */
+        Collecting,         /**< waiting for the next order of the players */
+        Resolving,          /**< executing the orders of a round */
+        Rollover,           /**< end and start of day processing of all players */
+    };
+    struct SimOrder
+    {
+        spGameAction pAction;
+        /**
+         * @brief pUnit unit the order was given to. Only compared, never used
+         */
+        Unit* pUnit{nullptr};
+    };
+    /**
+     * @brief simultaneousIntercept
+     * @return true if the action was queued as order instead of being performed
+     */
+    bool simultaneousIntercept(spGameAction & pGameAction);
+    void simultaneousOnActionPerformed();
+    void simultaneousRolloverStep();
+    void simultaneousCollect();
+    void simultaneousAskAi(qint32 player);
+    void simultaneousResolveNext();
+    /**
+     * @brief simultaneousValidate
+     * @return the action to perform for the order or a nullptr if the order became impossible
+     */
+    spGameAction simultaneousValidate(SimOrder & order, qint32 player);
+    qint32 simultaneousAlivePlayers() const;
+    /**
+     * @brief simultaneousShowStatus updates the status line of the mode. A notice is shown for the next rounds.
+     */
+    void simultaneousShowStatus(const QString & notice = QString());
+private:
+    SimPhase m_simPhase{SimPhase::Inactive};
+    std::vector<std::deque<SimOrder>> m_simQueues;
+    std::vector<bool> m_simEnded;
+    std::vector<qint32> m_simRoundOrder;
+    qint32 m_simRoundIndex{0};
+    qint32 m_simFirstPlayer{0};
+    qint32 m_simAskedPlayer{-1};
+    /**
+     * @brief m_simAiBusy an ai is deciding. It processes events while thinking, so nothing else of the round logic may run meanwhile.
+     */
+    bool m_simAiBusy{false};
+    bool m_simCollectPending{false};
+    spLabel m_simLabel;
+    QString m_simNotice;
+    qint32 m_simNoticeRound{0};
+    qint32 m_simRolloverRemaining{0};
+    qint32 m_simRoundsToday{0};
+    qint32 m_simExecuted{0};
+    qint32 m_simCancelled{0};
+    qint32 m_simAttacksDropped{0};
+    qint32 m_simRounds{0};
+private:
     GameMenue* m_pMenu{nullptr};
     GameMap* m_pMap{nullptr};
     spGameAction m_pStoredAction{nullptr};
@@ -129,5 +209,9 @@ private:
     QTimer m_delayedActionPerformedTimer{this};
     bool m_exit{false};
     QByteArray m_mapHash;
+    /**
+     * @brief requiresMapHash if the hash of the whole map needs to be created for each action
+     */
+    bool requiresMapHash() const;
 };
 

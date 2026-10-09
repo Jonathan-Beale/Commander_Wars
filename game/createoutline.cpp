@@ -6,7 +6,30 @@
 #include "3rd_party/oxygine-framework/oxygine/actor/Sprite.h"
 
 void CreateOutline::addCursorRangeOutline(oxygine::spActor pOutlineSprite, const QString & prefix, qint32 range, QColor color)
-{    
+{
+    if (HexGrid::enabled())
+    {
+        // hex grid: draw all edges of the fields at the given range which aren't shared with a field inside of the range
+        for (qint32 x = -range; x <= range; ++x)
+        {
+            for (qint32 y = -range; y <= range; ++y)
+            {
+                if (HexGrid::distance(x, y) == range)
+                {
+                    for (qint32 i = 0; i < HexGrid::neighbourCount(); ++i)
+                    {
+                        if (HexGrid::distance(x + HexGrid::neighbours[i].x(), y + HexGrid::neighbours[i].y()) > range)
+                        {
+                            oxygine::spSprite pSprite = GameMap::createHexTileSprite(color, GameMap::HexGraphic_Edge + i);
+                            pSprite->setPosition(HexGrid::offsetToScreen(x, y, GameMap::getImageSize()));
+                            pOutlineSprite->addChild(pSprite);
+                        }
+                    }
+                }
+            }
+        }
+        return;
+    }
     for (qint32 i = 0; i <= range; i++)
     {
         if (i == 0)

@@ -1,6 +1,7 @@
 #ifndef GAMEMAP_H
 #define GAMEMAP_H
 
+#include "coreengine/hexgrid.h"
 #include "3rd_party/oxygine-framework/oxygine/actor/ColorRectSprite.h"
 
 #include <QObject>
@@ -41,6 +42,15 @@ public:
     static constexpr float MinZoomLimit = 1.0f / 8.0f;
     static constexpr float MaxZoomLimit = 16.0f;
     static const char* const PLAINS;
+    static const char* const VOID_TERRAIN;
+    /**
+     * @brief HEX_LAYOUT_VARIABLE map variable of maps which are stored in the hex layout already
+     */
+    static const char* const HEX_LAYOUT_VARIABLE;
+    /**
+     * @brief HEX_WRAP_VARIABLE map variable of maps which wrap around in east west direction
+     */
+    static const char* const HEX_WRAP_VARIABLE;
     /**
      * @brief The MapHeaderInfo struct read from the filesystem
      */
@@ -88,6 +98,14 @@ public:
      */
     explicit GameMap(QString map, bool onlyLoad, bool fast, bool savegame);
     virtual ~GameMap();
+    /**
+     * @brief render draws a map which wraps around several times next to each other
+     */
+    virtual void render(const oxygine::RenderState& parentRS) override;
+    /**
+     * @brief getShownFieldPosition position of the field in map pixel. For a map which wraps around the copy next to the screen center is used
+     */
+    QPoint getShownFieldPosition(qint32 x, qint32 y) const;
     static QJSValue & getMapJsThis(GameMap * me);
     /**
      * @brief newMap
@@ -96,6 +114,22 @@ public:
      * @param playerCount
      */
     void newMap(qint32 width, qint32 heigth, qint32 playerCount, const QString baseTerrain = "PLAINS");
+    /**
+     * @brief updateHexPlayArea hex grid: limits the drawn area to the fields which have a tile and places all tiles, buildings and units again.
+     */
+    void updateHexPlayArea();
+    /**
+     * @brief convertToHexLayout hex grid: a map made for the square grid would be shown as parallelogram, cause each row
+     * of the hex layout starts half a field further right. This moves each second row one field to the left instead,
+     * so the rows alternate and the map keeps its rectangular shape. The fields added at the row ends have no tile.
+     * Maps which have been converted or were made for the hex layout are marked and stay unchanged.
+     */
+    void convertToHexLayout();
+    /**
+     * @brief importHexMaps hex grid prototype: creates the binary map for each text map "*.hexmap.json" inside of the
+     * maps folders, if the binary map doesn't exist or is older. The format is described in hex_balance/HEX_MAP_FORMAT.md
+     */
+    static void importHexMaps();
     /**
      * @brief changeMap
      * @param width
@@ -815,6 +849,38 @@ public:
      */
     Q_INVOKABLE static qint32 getImageSize();
     /**
+     * @brief The HexGraphic enum runtime created graphics of the hex grid prototype.
+     * The direction based graphics use the index of HexGrid::neighbours as offset.
+     */
+    enum HexGraphic
+    {
+        HexGraphic_Tile,        /**< white hex with a grey border */
+        HexGraphic_Fill,        /**< white hex without border */
+        HexGraphic_Border,      /**< border of a hex */
+        HexGraphic_Edge,        /**< + direction: the edge shared with the neighbour */
+        HexGraphic_PathHalf = HexGraphic_Edge + 6,      /**< + direction: path from the center to the neighbour */
+        HexGraphic_PathHead = HexGraphic_PathHalf + 6,  /**< + direction: arrow head pointing to the neighbour */
+        HexGraphic_Max = HexGraphic_PathHead + 6,
+    };
+    /**
+     * @brief getHexGraphic created on the first call.
+     * @return the graphic filling the image box of a field or a nullptr if no ui is available
+     */
+    static oxygine::ResAnim* getHexGraphic(qint32 graphic);
+    /**
+     * @brief getHexTileAnim placeholder hex tile of the hex grid prototype.
+     */
+    static oxygine::ResAnim* getHexTileAnim();
+    /**
+     * @brief createHexTileSprite creates a sprite of a hex graphic filling the image box of a field
+     */
+    static oxygine::spSprite createHexTileSprite(QColor color, qint32 graphic = HexGraphic_Tile);
+    /**
+     * @brief getHexMaskedAnim
+     * @return a copy of the given terrain animation with all frames cut to the hex shape or a nullptr if it can't be created
+     */
+    static oxygine::ResAnim* getHexMaskedAnim(oxygine::ResAnim* pAnim);
+    /**
      * @brief setImagesize
      * @param imagesize
      */
@@ -1008,6 +1074,8 @@ public:
 
 private slots:
     void zoomChanged();
+protected:
+    virtual void doUpdate(const oxygine::UpdateState& us) override;
 private:
     void loadMap(QString map, bool onlyLoad, bool fast, bool savegame);
     /**

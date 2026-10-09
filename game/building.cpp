@@ -1,3 +1,6 @@
+#include "3rd_party/oxygine-framework/oxygine/RenderState.h"
+#include "3rd_party/oxygine-framework/oxygine/UpdateState.h"
+#include "resource_management/movementtablemanager.h"
 #include "game/building.h"
 #include "game/player.h"
 #include "game/terrain.h"
@@ -191,6 +194,14 @@ void Building::setUnitOwner(Unit* pUnit)
 
 void Building::setOwner(Player* pOwner)
 {
+    if (m_pTerrain != nullptr && !qEnvironmentVariableIsSet("COW_CLEAR_ALL_MOVE_COSTS"))
+    {
+        MovementTableManager::clearBaseMovementPointsCache(m_pTerrain);
+    }
+    else
+    {
+        MovementTableManager::clearBaseMovementPointsCache();
+    }
     Player* prevOwner = m_pOwner;
     // change ownership
     m_pOwner = pOwner;
@@ -1359,5 +1370,26 @@ void Building::deserializer(QDataStream& pStream, bool fast)
     if (version > 4)
     {
         pStream >> m_BuildingName;
+    }
+}
+
+void Building::render(const oxygine::RenderState& parentRS)
+{
+    // Building::getX and getY are the field on the map, the position on the screen is the one of the actor
+    if (!Terrain::isOnScreen(parentRS, oxygine::Actor::getX(), oxygine::Actor::getY()))
+    {
+        return;
+    }
+    m_lastRenderFrame = Terrain::getRenderFrame();
+    Tooltip::render(parentRS);
+}
+
+void Building::update(const oxygine::UpdateState& us)
+{
+    oxygine::UpdateState catchUp;
+    const oxygine::UpdateState* pState = Terrain::updateVisible(us, m_lastRenderFrame, m_lastUpdateTime, catchUp);
+    if (pState != nullptr)
+    {
+        Tooltip::update(*pState);
     }
 }

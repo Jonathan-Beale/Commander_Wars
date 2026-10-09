@@ -390,6 +390,19 @@
                         <fontSize>16</fontSize>
                         <hAlign>"Middle"</hAlign>
                     </ColoredBar>
+                    <ColoredBar>
+                        <x>10</x>
+                        <y>lastY + lastHeight + 2</y>
+                        <width>274</width>
+                        <height>20</height>
+                        <sprite></sprite>
+                        <foreSprite>"barforeground"</foreSprite>
+                        <Id>IngameInfoBar.UnitRankId</Id>
+                        <font>"infoBar"</font>
+                        <fontColor>"ffffff"</fontColor>
+                        <fontSize>16</fontSize>
+                        <hAlign>"Middle"</hAlign>
+                    </ColoredBar>
                     <Label>
                         <x>10</x>
                         <y>lastY + lastHeight + 1</y>

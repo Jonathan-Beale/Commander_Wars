@@ -1,6 +1,9 @@
 #ifndef INTERPRETER_H
 #define INTERPRETER_H
 
+#include <unordered_map>
+#include "coreengine/perftrace.h"
+#include <QHash>
 #include <QObject>
 #include <QQmlEngine>
 #include <QVector>
@@ -78,7 +81,14 @@ public:
     void threadProcessEvents()
     {
         Q_ASSERT(m_inJsCall == 0);
+        // The ai calls this inside of its loops, several thousand times for each action, to keep the game responsive.
+        // Asking the event loop is slow compared to the loops, so it's only done every few milliseconds.
+        if (m_processEventsTimer.isValid() && m_processEventsTimer.elapsed() < 4)
+        {
+            return;
+        }
         QCoreApplication::processEvents(QEventLoop::ProcessEventsFlag::AllEvents, 5);
+        m_processEventsTimer.start();
     }
 
 signals:
@@ -109,9 +119,20 @@ public slots:
             QJSValue funcPointer = objPointer.property(func);
             if (funcPointer.isCallable())
             {
+                // startup benchmarking: only the outermost script calls are measured
+                const bool trace = PerfTrace::enabled() && m_inJsCall == 0;
+                QElapsedTimer traceTimer;
+                if (trace)
+                {
+                    traceTimer.start();
+                }
                 ++m_inJsCall;
                 ret = funcPointer.call(args);
                 exitJsCall();
+                if (trace)
+                {
+                    PerfTrace::addJsCall(func, traceTimer.nsecsElapsed());
+                }
                 if (ret.isError())
                 {
                     printError(ret);
@@ -119,6 +140,26 @@ public slots:
             }
         }
         return ret;
+    }
+    /**
+     * @brief isDefaultFunction
+     * @return true if obj.func is the same function as baseObj.func, e.g. a co which doesn't replace a hook of the base co.
+     * Hooks which return a neutral value in the base object don't need to be called for such objects.
+     * The result is cached, cause the script objects don't change while the interpreter exists.
+     */
+    inline bool isDefaultFunction(const QString & obj, const QString & baseObj, const QString & func)
+    {
+        auto & objCache = m_defaultFunctionCache[func][baseObj];
+        auto iter = objCache.constFind(obj);
+        if (iter != objCache.constEnd())
+        {
+            return iter.value();
+        }
+        const QJSValue baseFunction = globalObject().property(baseObj).property(func);
+        const QJSValue function = globalObject().property(obj).property(func);
+        const bool isDefault = baseFunction.isCallable() && function.strictlyEquals(baseFunction);
+        objCache.insert(obj, isDefault);
+        return isDefault;
     }
     /**
      * @brief doString immediately interprates the string with the javascript-interpreter
@@ -180,17 +221,19 @@ public slots:
     QJSValue newQJsObject(QObject* object, JsThis* me)
     {
         m_ownedObjects.push_back({object, me});
+        // the first entry of an object is the one which gets removed, like searching the list from the front
+        m_ownedObjectIndex.emplace(me, std::prev(m_ownedObjects.end()));
         return newQObject(object);
     }
     void deleteQJsObject(JsThis* me)
     {
-        for (auto iter = m_ownedObjects.begin(); iter != m_ownedObjects.end(); ++iter)
+        // large maps own several ten thousand objects and the ai creates and deletes point lists all the time,
+        // so the entry is found with an index instead of searching the list.
+        auto index = m_ownedObjectIndex.find(me);
+        if (index != m_ownedObjectIndex.end())
         {
-            if (iter->pThis == me)
-            {
-                m_ownedObjects.erase(iter);
-                break;
-            }
+            m_ownedObjects.erase(index->second);
+            m_ownedObjectIndex.erase(index);
         }
     }
 
@@ -222,8 +265,11 @@ private:
     static QString m_runtimeData;
     spScriptFunctionSource m_scriptFunctionSource;
     qint32 m_inJsCall{0};
+    QElapsedTimer m_processEventsTimer;
+    QHash<QString, QHash<QString, QHash<QString, bool>>> m_defaultFunctionCache;
     std::vector<spQObject> m_jsObjects;
     std::list<JsThisData> m_ownedObjects;
+    std::unordered_map<JsThis*, std::list<JsThisData>::iterator> m_ownedObjectIndex;
     qint32 m_jsCallCount{0};
 };
 

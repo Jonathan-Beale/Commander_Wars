@@ -1,6 +1,10 @@
+#include "gameinput/basegameinputif.h"
+#include "game/gamerule.h"
+#include "ai/dummyai.h"
 #include "3rd_party/oxygine-framework/oxygine/actor/Stage.h"
 
 #include "menue/mapselectionmapsmenue.h"
+#include "coreengine/perftrace.h"
 #include "menue/mainwindow.h"
 #include "menue/gamemenue.h"
 #include "menue/campaignmenu.h"
@@ -33,6 +37,7 @@ MapSelectionMapsMenue::MapSelectionMapsMenue(spMapSelectionView pMapSelectionVie
     : Basemenu(),
       m_pMapSelectionView(pMapSelectionView)
 {
+    PerfTrace::mark("map selection: create");
 #ifdef GRAPHICSUPPORT
     setObjectName("MapSelectionMapsMenu");
 #endif
@@ -381,6 +386,7 @@ void MapSelectionMapsMenue::hidePlayerSelection()
 
 void MapSelectionMapsMenue::startGame()
 {
+    PerfTrace::mark("start game pressed");
     if (!m_starting)
     {
         CONSOLE_PRINT("Start game", GameConsole::eDEBUG);
@@ -389,6 +395,22 @@ void MapSelectionMapsMenue::startGame()
 
         spGameMap pMap = m_pMapSelectionView->getCurrentMap();
         pMap->setVisible(false);
+        // simultaneous turns prototype: the round logic asks the ai's directly, so they can't run in the ai process
+        GameRule* pSimultaneousRule = pMap->getGameRules()->getGameRule("GAMERULE_SIMULTANEOUS_TURNS");
+        const bool simultaneous = pSimultaneousRule != nullptr && pSimultaneousRule->getRuleValue(0) != 0;
+        Settings::getInstance()->setForceLocalAi(simultaneous);
+        if (simultaneous)
+        {
+            for (qint32 i = 0; i < pMap->getPlayerCount(); ++i)
+            {
+                Player* pPlayer = pMap->getPlayer(i);
+                BaseGameInputIF* pInput = pPlayer->getBaseGameInput();
+                if (pInput != nullptr && dynamic_cast<DummyAi*>(pInput) != nullptr)
+                {
+                    pPlayer->setBaseGameInput(BaseGameInputIF::createAi(pMap.get(), pInput->getAiType()));
+                }
+            }
+        }
         pMap->initPlayersAndSelectCOs();
         pMap->setCampaign(m_pMapSelectionView->getCurrentCampaign());
         pMap->getGameScript()->gameStart();
@@ -606,6 +628,7 @@ bool MapSelectionMapsMenue::assignPlayerToUser(qint32 playerIdx, const QString &
 
 void MapSelectionMapsMenue::onEnter()
 {
+    PerfTrace::mark("map selection: ready");
     Interpreter* pInterpreter = Interpreter::getInstance();
     QString object = "Init";
     QString func = "mapsSelection";

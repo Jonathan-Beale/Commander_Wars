@@ -39,3 +39,6 @@ CMakeLists.txt.user
 /distribution/logs
 /distribution/savegames
 .qtcreator/CMakeLists.txt.user.PLSVdO
+
+# locally built executable of the hex prototype, copied next to the resources by run_hex.bat
+/Commander_Wars.exe

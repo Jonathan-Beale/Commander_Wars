@@ -2,6 +2,7 @@
 #include <QCoreApplication>
 
 #include "ai/aiprocesspipe.h"
+#include "coreengine/perftrace.h"
 
 #include "coreengine/settings.h"
 #include "coreengine/gameconsole.h"
@@ -248,6 +249,7 @@ void AiProcessPipe::sendActionToSlave(spGameAction pAction)
 {
     if (m_pipeState == PipeState::Ingame)
     {
+        PerfTrace::mark("pipe: send to ai process");
         QString command = QString(NEWACTIONFORSLAVE);
         CONSOLE_PRINT("AI-Pipe sending command " + command + " action=" + pAction->getActionID(), GameConsole::eDEBUG);
         QByteArray data;
@@ -263,6 +265,7 @@ void AiProcessPipe::sendActionToMaster(spGameAction pAction)
 {
     if (m_pipeState == PipeState::Ingame)
     {
+        PerfTrace::mark("pipe: ai sends action");
         QString command = QString(NEWACTIONFORMASTER);
         CONSOLE_PRINT("AI-Pipe sending command " + command + " action=" + pAction->getActionID() + " with sync counter " + QString::number(pAction->getSyncCounter()), GameConsole::eDEBUG);
         QByteArray data;
@@ -285,6 +288,7 @@ void AiProcessPipe::onNewActionForMaster(QDataStream & stream)
 void AiProcessPipe::onNewAction(QDataStream & stream)
 {
     std::lock_guard<std::mutex> locker(m_ActionMutex);
+    PerfTrace::mark("pipe: action received");
     spGameAction pAction = MemoryManagement::create<GameAction>(m_pMap);
     pAction->deserializeObject(stream);
     m_ActionBuffer.append(pAction);

@@ -53,6 +53,13 @@ protected:
      */
     void showPerks(spCO pCO, qint32 & y);
     /**
+     * @brief showCOUnits shows the special units of the co. Each one links to its wiki page.
+     * @param pCO
+     * @param pPlayer
+     * @param y
+     */
+    void showCOUnits(spCO pCO, spPlayer pPlayer, qint32 & y);
+    /**
      * @brief showCOBoost
      * @param pUnit
      * @param pCO
@@ -107,6 +114,9 @@ protected:
 
     oxygine::spTextField m_PerkText;
     QVector<oxygine::spActor> m_PerkActors;
+
+    oxygine::spTextField m_COUnitText;
+    QVector<oxygine::spActor> m_COUnitActors;
 
     QVector<oxygine::spActor> m_UnitDataActors;
     GameMap* m_pMap{nullptr};
