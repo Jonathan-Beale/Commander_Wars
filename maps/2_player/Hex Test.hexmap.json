@@ -1,0 +1,48 @@
+{
+    "name": "Hex Test",
+    "description": "Small test map of the hex grid prototype.",
+    "author": "Hex prototype",
+    "players": 2,
+    "width": 12,
+    "height": 9,
+    "legend": {".": "PLAINS", "F": "FOREST", "M": "MOUNTAIN", "~": "RIVER", "=": "STREET", "B": "BRIDGE1", "S": "SEA"},
+    "terrain": [
+        ". . . . . . . F . . . .",
+        " . . . . M . . . . . . .",
+        "  . . . . . . . . . . . .",
+        "   . F . M . M F . F . . .",
+        "    . . . . . . . . . . . .",
+        "     . . . F . F M . M . F .",
+        "      . . . . . . . . . . . .",
+        "       . . . . . . . M . . . .",
+        "        . . . . F . . . . . . ."
+    ],
+    "buildings": [
+        {"id": "TOWN", "x": 11, "y": 0, "owner": 1},
+        {"id": "HQ", "x": 10, "y": 1, "owner": 1},
+        {"id": "FACTORY", "x": 9, "y": 2, "owner": 1},
+        {"id": "FACTORY", "x": 2, "y": 6, "owner": 2},
+        {"id": "HQ", "x": 1, "y": 7, "owner": 2},
+        {"id": "TOWN", "x": 0, "y": 8, "owner": 2},
+        {"id": "TOWN", "x": 7, "y": 2, "owner": 0},
+        {"id": "TOWN", "x": 1, "y": 4, "owner": 0},
+        {"id": "TOWN", "x": 5, "y": 4, "owner": 0},
+        {"id": "TOWN", "x": 6, "y": 4, "owner": 0},
+        {"id": "TOWN", "x": 10, "y": 4, "owner": 0},
+        {"id": "TOWN", "x": 4, "y": 6, "owner": 0}
+    ],
+    "units": [
+        {"id": "LIGHT_TANK", "x": 8, "y": 1, "owner": 1},
+        {"id": "INFANTRY", "x": 9, "y": 1, "owner": 1},
+        {"id": "INFANTRY", "x": 8, "y": 2, "owner": 1},
+        {"id": "INFANTRY", "x": 10, "y": 2, "owner": 1},
+        {"id": "LIGHT_TANK", "x": 9, "y": 3, "owner": 1},
+        {"id": "ARTILLERY", "x": 10, "y": 3, "owner": 1},
+        {"id": "ARTILLERY", "x": 1, "y": 5, "owner": 2},
+        {"id": "LIGHT_TANK", "x": 2, "y": 5, "owner": 2},
+        {"id": "INFANTRY", "x": 1, "y": 6, "owner": 2},
+        {"id": "INFANTRY", "x": 3, "y": 6, "owner": 2},
+        {"id": "INFANTRY", "x": 2, "y": 7, "owner": 2},
+        {"id": "LIGHT_TANK", "x": 3, "y": 7, "owner": 2}
+    ]
+}

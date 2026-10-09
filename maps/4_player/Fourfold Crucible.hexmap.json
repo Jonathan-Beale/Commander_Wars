@@ -1,0 +1,300 @@
+{
+    "name": "Fourfold Crucible",
+    "description": "Large four-player hex battlefield. Four bridge chokepoints feed a valuable central crucible, while side routes and neutral production create competing fronts.",
+    "author": "OpenAI",
+    "players": 4,
+    "layout": "rectangle",
+    "width": 31,
+    "height": 31,
+    "legend": {
+        ".": "PLAINS",
+        "F": "FOREST",
+        "M": "MOUNTAIN",
+        "~": "RIVER",
+        "=": "STREET",
+        "B": "BRIDGE1",
+        "S": "SEA"
+    },
+    "terrain": [
+        ". . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        " . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "  . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "   . . . . = . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "    . . . . = . . . . . . . . . . . . = = = = = = = = F = = . . .",
+        "     . . . . F F F . . F F F . . . ~ . = . F F F . F F . . . . . .",
+        "      . . . . = F . F . . F . S S S ~ . = . . F . F . . F . . . . .",
+        "       . . . . = . . . M M . S S S S ~ . = . . . . M . . . . . . . .",
+        "        . . . . F . . . . M S S S S . ~ . = . . S S S . . . F . . . .",
+        "         . . . . = . F . M . S S S . . ~ . = . S S S S . F . . . . . .",
+        "          . . . . = . . M M . S S . . . ~ . = . S S S . M . . . . . . .",
+        "           . . . . = F . . . M . . . . . ~ . = . . . M . . . F . . . . .",
+        "            . . . F F . M . . . . M M . F ~ F = . M . . . . . . F F . . .",
+        "             . . . . = F . M . . . . M F . . . F M . . . . . . F . . . . .",
+        "              . . . . = = = = = = = = F F . B . F F . . . . . . . . . . . .",
+        "               . . . . . ~ ~ ~ ~ ~ ~ ~ ~ . B . B . ~ ~ ~ ~ ~ ~ ~ ~ . . . . .",
+        "                . . . . . . . . . . . . F F . B . F F = = = = = = = = . . . .",
+        "                 . . . . . F . . . . . . M F . . . F M . . . . M . F = . . . .",
+        "                  . . . F F . . . . . . M . = F ~ F . M M . . . . M . F F . . .",
+        "                   . . . . . F . . . M . . . = . ~ . . . . . M . . . F = . . . .",
+        "                    . . . . . . . M . S S S . = . ~ . . . S S . M M . . = . . . .",
+        "                     . . . . . . F . S S S S . = . ~ . . S S S . M . F . = . . . .",
+        "                      . . . . F . . . S S S . . = . ~ . S S S S M . . . . F . . . .",
+        "                       . . . . . . . . M . . . . = . ~ S S S S . M M . . . = . . . .",
+        "                        . . . . . F . . F . F . . = . ~ S S S . F . . F . F = . . . .",
+        "                         . . . . . . F F . F F F . = . ~ . . . F F F . . F F F . . . .",
+        "                          . . . = = F = = = = = = = = . . . . . . . . . . . . = . . . .",
+        "                           . . . . . . . . . . . . . . . . . . . . . . . . . . = . . . .",
+        "                            . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "                             . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "                              . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . ."
+    ],
+    "buildings": [
+        {
+            "id": "HQ",
+            "x": 3,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "FACTORY",
+            "x": 4,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "TOWN",
+            "x": 3,
+            "y": 4,
+            "owner": 1
+        },
+        {
+            "id": "HQ",
+            "x": 27,
+            "y": 3,
+            "owner": 2
+        },
+        {
+            "id": "FACTORY",
+            "x": 26,
+            "y": 3,
+            "owner": 2
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 4,
+            "owner": 2
+        },
+        {
+            "id": "HQ",
+            "x": 3,
+            "y": 27,
+            "owner": 3
+        },
+        {
+            "id": "FACTORY",
+            "x": 4,
+            "y": 27,
+            "owner": 3
+        },
+        {
+            "id": "TOWN",
+            "x": 3,
+            "y": 26,
+            "owner": 3
+        },
+        {
+            "id": "HQ",
+            "x": 27,
+            "y": 27,
+            "owner": 4
+        },
+        {
+            "id": "FACTORY",
+            "x": 26,
+            "y": 27,
+            "owner": 4
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 26,
+            "owner": 4
+        },
+        {
+            "id": "TOWN",
+            "x": 6,
+            "y": 4,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 4,
+            "y": 7,
+            "owner": 0
+        },
+        {
+            "id": "FACTORY",
+            "x": 7,
+            "y": 8,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 8,
+            "y": 5,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 24,
+            "y": 4,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 7,
+            "owner": 0
+        },
+        {
+            "id": "FACTORY",
+            "x": 23,
+            "y": 8,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 22,
+            "y": 5,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 6,
+            "y": 26,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 4,
+            "y": 23,
+            "owner": 0
+        },
+        {
+            "id": "FACTORY",
+            "x": 7,
+            "y": 22,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 8,
+            "y": 25,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 24,
+            "y": 26,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 23,
+            "owner": 0
+        },
+        {
+            "id": "FACTORY",
+            "x": 23,
+            "y": 22,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 22,
+            "y": 25,
+            "owner": 0
+        },
+        {
+            "id": "MINE",
+            "x": 15,
+            "y": 12,
+            "owner": 0
+        },
+        {
+            "id": "MINE",
+            "x": 15,
+            "y": 18,
+            "owner": 0
+        },
+        {
+            "id": "MINE",
+            "x": 12,
+            "y": 15,
+            "owner": 0
+        },
+        {
+            "id": "MINE",
+            "x": 18,
+            "y": 15,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 13,
+            "y": 14,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 17,
+            "y": 16,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 14,
+            "y": 17,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 16,
+            "y": 13,
+            "owner": 0
+        },
+        {
+            "id": "TOWER",
+            "x": 15,
+            "y": 15,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 10,
+            "y": 14,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 20,
+            "y": 16,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 14,
+            "y": 20,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 16,
+            "y": 10,
+            "owner": 0
+        }
+    ],
+    "units": []
+}

@@ -1,0 +1,419 @@
+{
+    "name": "Hex Globe",
+    "description": "A world which wraps around: leaving the map in the east arrives in the west. A road follows the equator around the globe.",
+    "author": "Hex prototype",
+    "players": 4,
+    "width": 32,
+    "height": 13,
+    "wrap": true,
+    "legend": {
+        ".": "PLAINS",
+        "F": "FOREST",
+        "M": "MOUNTAIN",
+        "=": "STREET",
+        "S": "SEA"
+    },
+    "terrain": [
+        "S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S",
+        " . . F . . . M . . . F . . . M . . . F . . . M . . . F . . . M .",
+        ". . . . F . . . . . . . F . . . . . . . F . . . . . . . F . . .",
+        " . . . . . . M M . . . . . . M M . . . . . . M M . . . . . . M M",
+        ". . . . . F . M . . . . . F . M . . . . . F . M . . . . . F . M",
+        " . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        "= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =",
+        " . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . . .",
+        ". F . . . . M M . F . . . . M M . F . . . . M M . F . . . . M M",
+        " . . . . . . M . . . . . . . M . . . . . . . M . . . . . . . M .",
+        ". . . . F . . . . . . . F . . . . . . . F . . . . . . . F . . .",
+        " . F . . . . M . . F . . . . M . . F . . . . M . . F . . . . M .",
+        "S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S S"
+    ],
+    "buildings": [
+        {
+            "id": "HQ",
+            "x": 3,
+            "y": 6,
+            "owner": 1
+        },
+        {
+            "id": "FACTORY",
+            "x": 2,
+            "y": 5,
+            "owner": 1
+        },
+        {
+            "id": "FACTORY",
+            "x": 4,
+            "y": 7,
+            "owner": 1
+        },
+        {
+            "id": "TOWN",
+            "x": 3,
+            "y": 4,
+            "owner": 1
+        },
+        {
+            "id": "TOWN",
+            "x": 3,
+            "y": 8,
+            "owner": 1
+        },
+        {
+            "id": "TOWN",
+            "x": 6,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 7,
+            "y": 6,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 6,
+            "y": 10,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 0,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 0,
+            "y": 9,
+            "owner": 0
+        },
+        {
+            "id": "AIRPORT",
+            "x": 1,
+            "y": 7,
+            "owner": 0
+        },
+        {
+            "id": "HQ",
+            "x": 11,
+            "y": 6,
+            "owner": 2
+        },
+        {
+            "id": "FACTORY",
+            "x": 10,
+            "y": 5,
+            "owner": 2
+        },
+        {
+            "id": "FACTORY",
+            "x": 12,
+            "y": 7,
+            "owner": 2
+        },
+        {
+            "id": "TOWN",
+            "x": 11,
+            "y": 4,
+            "owner": 2
+        },
+        {
+            "id": "TOWN",
+            "x": 11,
+            "y": 8,
+            "owner": 2
+        },
+        {
+            "id": "TOWN",
+            "x": 14,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 15,
+            "y": 6,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 14,
+            "y": 10,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 8,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 8,
+            "y": 9,
+            "owner": 0
+        },
+        {
+            "id": "AIRPORT",
+            "x": 9,
+            "y": 7,
+            "owner": 0
+        },
+        {
+            "id": "HQ",
+            "x": 19,
+            "y": 6,
+            "owner": 3
+        },
+        {
+            "id": "FACTORY",
+            "x": 18,
+            "y": 5,
+            "owner": 3
+        },
+        {
+            "id": "FACTORY",
+            "x": 20,
+            "y": 7,
+            "owner": 3
+        },
+        {
+            "id": "TOWN",
+            "x": 19,
+            "y": 4,
+            "owner": 3
+        },
+        {
+            "id": "TOWN",
+            "x": 19,
+            "y": 8,
+            "owner": 3
+        },
+        {
+            "id": "TOWN",
+            "x": 22,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 23,
+            "y": 6,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 22,
+            "y": 10,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 16,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 16,
+            "y": 9,
+            "owner": 0
+        },
+        {
+            "id": "AIRPORT",
+            "x": 17,
+            "y": 7,
+            "owner": 0
+        },
+        {
+            "id": "HQ",
+            "x": 27,
+            "y": 6,
+            "owner": 4
+        },
+        {
+            "id": "FACTORY",
+            "x": 26,
+            "y": 5,
+            "owner": 4
+        },
+        {
+            "id": "FACTORY",
+            "x": 28,
+            "y": 7,
+            "owner": 4
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 4,
+            "owner": 4
+        },
+        {
+            "id": "TOWN",
+            "x": 27,
+            "y": 8,
+            "owner": 4
+        },
+        {
+            "id": "TOWN",
+            "x": 30,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 31,
+            "y": 6,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 30,
+            "y": 10,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 24,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "TOWN",
+            "x": 24,
+            "y": 9,
+            "owner": 0
+        },
+        {
+            "id": "AIRPORT",
+            "x": 25,
+            "y": 7,
+            "owner": 0
+        }
+    ],
+    "units": [
+        {
+            "id": "INFANTRY",
+            "x": 2,
+            "y": 6,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 4,
+            "y": 6,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 3,
+            "y": 7,
+            "owner": 1
+        },
+        {
+            "id": "LIGHT_TANK",
+            "x": 3,
+            "y": 5,
+            "owner": 1
+        },
+        {
+            "id": "RECON",
+            "x": 2,
+            "y": 7,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 10,
+            "y": 6,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 12,
+            "y": 6,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 11,
+            "y": 7,
+            "owner": 2
+        },
+        {
+            "id": "LIGHT_TANK",
+            "x": 11,
+            "y": 5,
+            "owner": 2
+        },
+        {
+            "id": "RECON",
+            "x": 10,
+            "y": 7,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 18,
+            "y": 6,
+            "owner": 3
+        },
+        {
+            "id": "INFANTRY",
+            "x": 20,
+            "y": 6,
+            "owner": 3
+        },
+        {
+            "id": "INFANTRY",
+            "x": 19,
+            "y": 7,
+            "owner": 3
+        },
+        {
+            "id": "LIGHT_TANK",
+            "x": 19,
+            "y": 5,
+            "owner": 3
+        },
+        {
+            "id": "RECON",
+            "x": 18,
+            "y": 7,
+            "owner": 3
+        },
+        {
+            "id": "INFANTRY",
+            "x": 26,
+            "y": 6,
+            "owner": 4
+        },
+        {
+            "id": "INFANTRY",
+            "x": 28,
+            "y": 6,
+            "owner": 4
+        },
+        {
+            "id": "INFANTRY",
+            "x": 27,
+            "y": 7,
+            "owner": 4
+        },
+        {
+            "id": "LIGHT_TANK",
+            "x": 27,
+            "y": 5,
+            "owner": 4
+        },
+        {
+            "id": "RECON",
+            "x": 26,
+            "y": 7,
+            "owner": 4
+        }
+    ]
+}

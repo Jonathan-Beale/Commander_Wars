@@ -1,0 +1,13 @@
+python -I - <<'EOF'
+import json
+d=json.load(open("Hex_Compiler_and_Maps/British_Isles_Channel_10K_4P.hexmap.json",encoding="utf-8"))
+d["layout"]="rectangle"; d["wrap"]=False
+w,h=d["width"],d["height"]
+facs=[b for b in d["buildings"] if b["id"]=="FACTORY"]
+corners=[(w*0.2,h*0.3),(w*0.8,h*0.3),(w*0.2,h*0.8),(w*0.8,h*0.8)]
+used=set()
+for owner,(cx,cy) in enumerate(corners,1):
+    b=min((f for f in facs if id(f) not in used), key=lambda f:(f["x"]-cx)**2+(f["y"]-cy)**2)
+    used.add(id(b)); b["id"]="HQ"; b["owner"]=owner; print(owner,b)
+json.dump(d,open("maps/4_player/British_Isles.hexmap.json","w",encoding="utf-8"))
+EOF
