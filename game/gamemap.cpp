@@ -144,6 +144,9 @@ void GameMap::loadMapData()
     m_markedFieldsLayer = MemoryManagement::create<oxygine::Actor>();
     m_markedFieldsLayer->setPriority(static_cast<qint32>(Mainapp::ZOrder::MarkedFields));
     addChild(m_markedFieldsLayer);
+    m_territoryLayer = MemoryManagement::create<oxygine::Actor>();
+    m_territoryLayer->setPriority(static_cast<qint32>(Mainapp::ZOrder::GridLayout));
+    addChild(m_territoryLayer);
     m_moveArrowLayer = MemoryManagement::create<oxygine::Actor>();
     m_moveArrowLayer->setPriority(static_cast<qint32>(Mainapp::ZOrder::MoveArrow));
     addChild(m_moveArrowLayer);
@@ -1790,6 +1793,151 @@ oxygine::spActor GameMap::getUnitsLayer() const
 oxygine::spActor GameMap::getMoveArrowLayer() const
 {
     return m_moveArrowLayer;
+}
+
+QString GameMap::getSyncDump()
+{
+    auto variablesHash = [](ScriptVariables* pVariables)
+    {
+        QByteArray data;
+        QDataStream stream(&data, QIODevice::WriteOnly);
+        pVariables->serializeObject(stream, true);
+        return QString::number(qHash(data) % 100000);
+    };
+    QString dump = "day " + QString::number(m_currentDay) + " current " + QString::number(m_CurrentPlayer.get() != nullptr ? m_CurrentPlayer->getPlayerID() : -1) + " |";
+    for (qint32 i = 0; i < getPlayerCount(); ++i)
+    {
+        Player* pPlayer = getPlayer(i);
+        dump += " p" + QString::number(i) + " funds " + QString::number(pPlayer->getFunds()) + " vars " + variablesHash(pPlayer->getVariables());
+        for (qint32 co = 0; co < 2; ++co)
+        {
+            if (pPlayer->getCO(co) != nullptr)
+            {
+                dump += " co" + QString::number(co) + " " + QString::number(pPlayer->getCO(co)->getPowerFilled(), 'f', 3) + " v" + variablesHash(pPlayer->getCO(co)->getVariables());
+            }
+        }
+    }
+    dump += " |";
+    const qint32 width = getMapWidth();
+    const qint32 heigth = getMapHeight();
+    for (qint32 y = 0; y < heigth; ++y)
+    {
+        for (qint32 x = 0; x < width; ++x)
+        {
+            Terrain* pTerrain = m_fields[y][x].get();
+            QString field;
+            const QString terrainVars = variablesHash(pTerrain->getVariables());
+            if (terrainVars != variablesHash(nullptr == pTerrain ? nullptr : m_fields[0][0]->getVariables()) || pTerrain->getHp() > 0)
+            {
+                field += " t:" + pTerrain->getTerrainID() + " hp" + QString::number(pTerrain->getHp()) + " v" + terrainVars;
+            }
+            Building* pBuilding = pTerrain->getBuilding();
+            if (pBuilding != nullptr && pBuilding->Building::getX() == x && pBuilding->Building::getY() == y)
+            {
+                field += " b:" + pBuilding->getBuildingID() + " o" + QString::number(pBuilding->getOwnerID()) + " hp" + QString::number(pBuilding->getHp()) +
+                         " f" + QString::number(pBuilding->getFireCount()) + " v" + variablesHash(pBuilding->getVariables());
+            }
+            Unit* pUnit = pTerrain->getUnit();
+            if (pUnit != nullptr)
+            {
+                field += " u:" + pUnit->getUnitID() + " o" + QString::number(pUnit->getOwner()->getPlayerID()) + " hp" + QString::number(pUnit->getHp(), 'f', 3) +
+                         " a" + QString::number(pUnit->getAmmo1()) + "/" + QString::number(pUnit->getAmmo2()) + " f" + QString::number(pUnit->getFuel()) +
+                         " r" + QString::number(pUnit->getUnitRank()) + " m" + QString::number(pUnit->getHasMoved()) + " c" + QString::number(pUnit->getCapturePoints()) +
+                         " v" + variablesHash(pUnit->getVariables());
+                QByteArray unitData;
+                QDataStream unitStream(&unitData, QIODevice::WriteOnly);
+                pUnit->getVariables()->serializeObject(unitStream, true);
+                if (unitData.size() > 4)
+                {
+                    // names and values of the changed variables of the unit
+                    QString text;
+                    for (const char c : std::as_const(unitData))
+                    {
+                        text += (c >= 32 && c < 127) ? QString(QChar(c)) : (c == 0 ? QString() : QString("#") + QString::number(static_cast<quint8>(c)));
+                    }
+                    field += " {" + text + "}";
+                }
+            }
+            if (!field.isEmpty())
+            {
+                dump += " [" + QString::number(x) + "," + QString::number(y) + field + "]";
+            }
+        }
+    }
+    return dump;
+}
+
+void GameMap::clearTerritory()
+{
+    m_territory.assign(static_cast<size_t>(getMapWidth()) * static_cast<size_t>(getMapHeight()), -1);
+}
+
+void GameMap::setTerritoryField(qint32 x, qint32 y, qint32 player)
+{
+    const qint32 width = getMapWidth();
+    if (m_territory.size() != static_cast<size_t>(width) * static_cast<size_t>(getMapHeight()))
+    {
+        clearTerritory();
+    }
+    if (onMap(x, y))
+    {
+        m_territory[static_cast<size_t>(y) * width + HexGrid::wrapX(x)] = player;
+    }
+}
+
+void GameMap::updateTerritoryBorders()
+{
+    if (m_territoryLayer.get() == nullptr)
+    {
+        return;
+    }
+    Mainapp::getInstance()->pauseRendering();
+    m_territoryLayer->removeChildren();
+    // The border is drawn above the terrain and the buildings and is semi transparent, so they stay visible below it.
+    // It's drawn three times: the line itself and two smaller, more transparent copies inside of it as a fade.
+    static const std::array<float, 3> scales = {1.0f, 0.9f, 0.8f};
+    static const std::array<qint32, 3> alphas = {150, 70, 30};
+    const float size = getImageSize();
+    const qint32 width = getMapWidth();
+    const qint32 heigth = getMapHeight();
+    if (HexGrid::enabled() && m_territory.size() == static_cast<size_t>(width) * static_cast<size_t>(heigth))
+    {
+        const qint32 neighbourCount = HexGrid::neighbourCount();
+        for (qint32 y = 0; y < heigth; ++y)
+        {
+            for (qint32 x = 0; x < width; ++x)
+            {
+                const qint32 owner = m_territory[static_cast<size_t>(y) * width + x];
+                if (owner < 0 || owner >= getPlayerCount())
+                {
+                    continue;
+                }
+                QColor color = getPlayer(owner)->getColor();
+                color.setAlpha(255);
+                for (qint32 i = 0; i < neighbourCount; ++i)
+                {
+                    const qint32 nx = x + HexGrid::neighbours[i].x();
+                    const qint32 ny = y + HexGrid::neighbours[i].y();
+                    // an edge to a field of the same player is inside of the territory
+                    if (onMap(nx, ny) && m_territory[static_cast<size_t>(ny) * width + HexGrid::wrapX(nx)] == owner)
+                    {
+                        continue;
+                    }
+                    for (size_t step = 0; step < scales.size(); ++step)
+                    {
+                        color.setAlpha(alphas[step]);
+                        oxygine::spSprite pSprite = createHexTileSprite(color, HexGraphic_Edge + i);
+                        pSprite->setScale(pSprite->getScaleX() * scales[step]);
+                        const float offset = size * (1.0f - scales[step]) / 2.0f;
+                        const QPoint position = HexGrid::fieldToScreen(x, y, getImageSize());
+                        pSprite->setPosition(position.x() + offset, position.y() + offset);
+                        m_territoryLayer->addChild(pSprite);
+                    }
+                }
+            }
+        }
+    }
+    Mainapp::getInstance()->continueRendering();
 }
 
 oxygine::spActor GameMap::getMarkedFieldsLayer() const

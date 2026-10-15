@@ -1,3 +1,5 @@
+#include "game/gamerules.h"
+#include "game/gamerule.h"
 #include <QDataStream>
 #include <QDirIterator>
 #include <QFileInfo>
@@ -925,6 +927,18 @@ namespace
             legend.insert(iter.key(), symbol);
         }
         spGameMap pMap = MemoryManagement::create<GameMap>(width, height, playerCount);
+        // "rules": ["GAMERULE_CIVILIZATION_WARS"] turns game rules on for this map
+        const QJsonArray ruleIds = root.value("rules").toArray();
+        for (const auto & ruleId : ruleIds)
+        {
+            const QString id = ruleId.toString();
+            pMap->getGameRules()->addGameRule(id);
+            GameRule* pRule = pMap->getGameRules()->getGameRule(id);
+            if (pRule != nullptr)
+            {
+                pRule->setRuleValue(1, 0);
+            }
+        }
         // "layout": "rectangle" maps are written like maps of the square grid: all rows start at the same column.
         // They are moved into the hex layout when they get loaded, so their rows alternate left and right.
         // All other maps describe the hex layout directly, where each row starts half a field further right.
@@ -999,6 +1013,20 @@ namespace
         {
             const QJsonObject data = item.toObject();
             placeBuilding(data.value("id").toString(), data.value("x").toInt(-1), data.value("y").toInt(-1), data.value("owner").toInt());
+        }
+        // civilization wars: resource deposits on the terrain e.g. {"id": "IRON", "x": 3, "y": 4}
+        const QJsonArray deposits = root.value("deposits").toArray();
+        for (const auto & item : deposits)
+        {
+            const QJsonObject data = item.toObject();
+            const qint32 y = data.value("y").toInt(-1);
+            const qint32 x = storageX(data.value("x").toInt(-1), y);
+            if (!pMap->onMap(x, y))
+            {
+                CONSOLE_PRINT("Hex map import: " + jsonPath + " deposit " + data.value("id").toString() + " has an invalid position", GameConsole::eERROR);
+                continue;
+            }
+            pMap->getTerrain(x, y)->getVariables()->createVariable("CIV_DEPOSIT")->writeDataString(data.value("id").toString().toUpper());
         }
         const QJsonArray units = root.value("units").toArray();
         for (const auto & item : units)

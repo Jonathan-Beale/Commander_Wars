@@ -27,6 +27,10 @@ var Constructor = function()
     };
     this.perform = function(action, map)
     {
+        // civilization wars: the first action of a match sets it up
+        CIVWARS.initGame(map);
+        // the trucks which deliver on their own drive before the turn ends
+        CIVWARS.runAutoTrucks(map.getCurrentPlayer(), map);
         map.nextTurn();
     };
     this.isFinalStep = function(action, map)

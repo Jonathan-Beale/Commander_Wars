@@ -236,8 +236,8 @@ var UNITRANKINGSYSTEM =
         {
             return false;
         }
-        var input = owner.getBaseGameInput();
-        return input !== null && input.getAiType() === GameEnums.AiTypes_Human;
+        // has to be the same on all computers of a network match: the host tells which seats are played by humans
+        return CIVWARS.isHuman(owner);
     },
     // called when a unit reached a new rank. Humans pick the branch with the promote action, the ai picks at once.
     onRankGained : function(unit)

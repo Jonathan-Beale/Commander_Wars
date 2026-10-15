@@ -386,6 +386,11 @@ public:
      * @return
      */
     QByteArray getMapHash();
+    /**
+     * @brief getSyncDump readable summary of the state of the match which has to be the same on all computers of a network
+     * match. Used with the environment variable COW_SYNC_DEBUG to find what differs when a match runs out of sync.
+     */
+    QString getSyncDump();
     QString getRecordFile() const;
     void setRecordFile(const QString & newRecordFile);
 
@@ -715,6 +720,30 @@ public:
      * @param yInput around given coordinates -1 whole map
      */
     Q_INVOKABLE void updateSprites(qint32 xInput = -1, qint32 yInput = -1, bool editor = false, bool showLoadingScreen = false, bool applyRulesPalette = false);
+    /**
+     * @brief clearTerritory no field belongs to a territory anymore. The borders change with updateTerritoryBorders.
+     */
+    Q_INVOKABLE void clearTerritory();
+    /**
+     * @brief setTerritoryField the field belongs to the territory of the given player, -1 for none
+     */
+    Q_INVOKABLE void setTerritoryField(qint32 x, qint32 y, qint32 player);
+    /**
+     * @brief updateTerritoryBorders draws the borders of all territories in the colours of their players.
+     * Fields of one player next to each other are one territory.
+     */
+    Q_INVOKABLE void updateTerritoryBorders();
+    /**
+     * @brief getTerritorySignature text the scripts use to remember what the shown territories were made of
+     */
+    Q_INVOKABLE QString getTerritorySignature() const
+    {
+        return m_territorySignature;
+    }
+    Q_INVOKABLE void setTerritorySignature(const QString & signature)
+    {
+        m_territorySignature = signature;
+    }
     /**
      * @brief syncTerrainAnimations
      * @param showLoadingScreen
@@ -1100,6 +1129,13 @@ private:
     std::vector<std::vector<spTerrain>> m_fields;
     std::vector<oxygine::spActor> m_rowSprites;
     oxygine::spActor m_markedFieldsLayer;
+    /**
+     * @brief m_territoryLayer borders of the territories of the players, see civilization wars
+     */
+    oxygine::spActor m_territoryLayer;
+
+    std::vector<qint32> m_territory;
+    QString m_territorySignature;
     oxygine::spActor m_moveArrowLayer;
     oxygine::spActor m_unitsLayer;
     QVector<spPlayer> m_players;

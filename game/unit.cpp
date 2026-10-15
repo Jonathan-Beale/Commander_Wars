@@ -1,3 +1,4 @@
+#include "game/unitpathfindingsystem.h"
 #include "3rd_party/oxygine-framework/oxygine/RenderState.h"
 #include "3rd_party/oxygine-framework/oxygine/UpdateState.h"
 #include "game/terrain.h"
@@ -312,8 +313,17 @@ void Unit::loadSpriteV2(const QString & spriteID, GameEnums::Recoloring mode, bo
         m_pUnitSprites.append(pSprite);
         pWaitSprite->setColor(QColor(100, 100, 100, 170));
         pWaitSprite->setScale(static_cast<float>(GameMap::getImageSize()) / static_cast<float>(pAnim->getWidth()));
-        pWaitSprite->setPosition(-(pSprite->getScaledWidth() - GameMap::getImageSize()) / 2, -(pSprite->getScaledHeight() - GameMap::getImageSize()));
-        addChild(pWaitSprite);
+        pWaitSprite->setPosition(pSprite->getX(), pSprite->getY());
+        if (m_spriteClip.get() != nullptr)
+        {
+            // unit which is still produced: only its unfinished upper part is greyed out
+            pWaitSprite->setPosition(pSprite->getX() - m_spriteClip->oxygine::Actor::getX(), pSprite->getY() - m_spriteClip->oxygine::Actor::getY());
+            m_spriteClip->addChild(pWaitSprite);
+        }
+        else
+        {
+            addChild(pWaitSprite);
+        }
         pWaitSprite->setVisible(false);
         m_pUnitWaitSprites.append(pWaitSprite);
         if (m_pOwner->getFlipUnitSprites() && flipSprite)
@@ -414,6 +424,19 @@ qint32 Unit::getFuelCostModifier(QPoint position, qint32 costs)
     {
         modifier += pCO->getFuelCostModifier(this, position, costs);
     }
+    // Civilization wars prototype: aircraft landed on an airport don't use fuel. Returns 0 if the mode isn't active.
+    if (m_pMap != nullptr)
+    {
+        Interpreter* pInterpreter = Interpreter::getInstance();
+        QJSValueList args({m_jsThis,
+                           costs,
+                           GameMap::getMapJsThis(m_pMap)});
+        QJSValue ret = pInterpreter->doFunction("CIVWARS", "getFuelCostModifier", args);
+        if (ret.isNumber())
+        {
+            modifier += ret.toInt();
+        }
+    }
     return modifier;
 }
 
@@ -436,6 +459,32 @@ void Unit::updateSprites(bool editor)
 {
     Interpreter* pInterpreter = Interpreter::getInstance();
     resetSprites();
+    // civilization wars: the upper part of a unit which is still produced is greyed out, the lower part is the finished one
+    m_buildFraction = 1.0f;
+    spScriptVariable pBuildLeft = m_Variables.getSpVariable("CIV_BUILD_LEFT");
+    if (pBuildLeft.get() != nullptr && pBuildLeft->readDataInt32() > 0)
+    {
+        QJSValue fraction = pInterpreter->doFunction("CIVWARS", "getUnitBuildFraction", QJSValueList({m_jsThis}));
+        if (fraction.isNumber())
+        {
+            m_buildFraction = qBound(0.05f, static_cast<float>(fraction.toNumber()), 1.0f);
+        }
+    }
+    if (m_spriteClip.get() != nullptr)
+    {
+        m_spriteClip->detach();
+        m_spriteClip.reset();
+    }
+    if (m_buildFraction < 1.0f)
+    {
+        const float size = GameMap::getImageSize();
+        m_spriteClip = MemoryManagement::create<oxygine::ClipRectActor>();
+        // the clip holds the grey sprites, it starts above the field for sprites which are higher than it
+        m_spriteClip->setPosition(-size / 2, -size / 2);
+        m_spriteClip->setSize(size * 2, size / 2 + size * (1.0f - m_buildFraction));
+        m_spriteClip->setPriority(static_cast<short>(Priorities::Waiting));
+        addChild(m_spriteClip);
+    }
     QString function1 = "loadSprites";
     QJSValueList args({m_jsThis,
                        GameMap::getMapJsThis(m_pMap)});
@@ -2029,6 +2078,11 @@ void Unit::startOfTurn()
     QString function1 = "startOfTurn";
     QJSValueList args({m_jsThis,
                        GameMap::getMapJsThis(m_pMap)});
+    if (isInProduction())
+    {
+        // civilization wars: a turn of the production of the unit is done
+        pInterpreter->doFunction("CIVWARS", "onUnitStartOfTurn", args);
+    }
     pInterpreter->doFunction(m_UnitID, function1, args);
     for (qint32 i = 0; i < m_TransportUnits.size(); i++)
     {
@@ -2671,6 +2725,51 @@ qreal Unit::getUnitDamage(const QString & weaponID)
 
 void Unit::refill(bool noMaterial, qreal fuelAmount, qreal ammo1Amount, qreal ammo2Amount)
 {
+    // Civilization wars prototype: all resupplies of units end here, so the script of the mode is asked how much of
+    // the ammo and fuel the stock of the owner is enough for. It returns nothing if the mode isn't active.
+    if (m_pMap != nullptr && m_pOwner != nullptr)
+    {
+        const bool refill1 = !(noMaterial && m_weapon1ID.isEmpty());
+        const bool refill2 = !(noMaterial && m_weapon2ID.isEmpty());
+        qint32 fuelGain = 0;
+        if (m_maxFuel > 0)
+        {
+            fuelGain = qMax(0, qMin(m_maxFuel, static_cast<qint32>(m_fuel + m_maxFuel * fuelAmount)) - m_fuel);
+        }
+        qint32 ammo1Gain = 0;
+        if (refill1 && m_maxAmmo1 > 0)
+        {
+            ammo1Gain = qMax(0, qMin(m_maxAmmo1, static_cast<qint32>(m_ammo1 + m_maxAmmo1 * ammo1Amount)) - m_ammo1);
+        }
+        qint32 ammo2Gain = 0;
+        if (refill2 && m_maxAmmo2 > 0)
+        {
+            ammo2Gain = qMax(0, qMin(m_maxAmmo2, static_cast<qint32>(m_ammo2 + m_maxAmmo2 * ammo2Amount)) - m_ammo2);
+        }
+        Interpreter* pInterpreter = Interpreter::getInstance();
+        QJSValueList args({m_jsThis,
+                           fuelGain,
+                           ammo1Gain,
+                           ammo2Gain,
+                           GameMap::getMapJsThis(m_pMap)});
+        QJSValue supply = pInterpreter->doFunction("CIVWARS", "onRefill", args);
+        if (supply.isArray())
+        {
+            if (m_maxFuel > 0)
+            {
+                setFuel(m_fuel + supply.property(0).toInt());
+            }
+            if (refill1 && m_maxAmmo1 > 0)
+            {
+                setAmmo1(m_ammo1 + supply.property(1).toInt());
+            }
+            if (refill2 && m_maxAmmo2 > 0)
+            {
+                setAmmo2(m_ammo2 + supply.property(2).toInt());
+            }
+            return;
+        }
+    }
     setFuel(m_fuel + m_maxFuel * fuelAmount);
     if (!(noMaterial && m_weapon1ID.isEmpty()))
     {
@@ -2684,6 +2783,11 @@ void Unit::refill(bool noMaterial, qreal fuelAmount, qreal ammo1Amount, qreal am
 
 void Unit::setHasMoved(bool value)
 {
+    if (value == false && isInProduction())
+    {
+        // civilization wars: a unit which is still produced can't be used
+        value = true;
+    }
     m_Moved = value;
     // change unit color
     if (m_Moved)
@@ -3020,6 +3124,56 @@ void Unit::moveUnitToField(qint32 x, qint32 y)
     showRanges();
     pUnit.reset();
     
+}
+
+bool Unit::isInProduction()
+{
+    spScriptVariable pBuildLeft = m_Variables.getSpVariable("CIV_BUILD_LEFT");
+    return pBuildLeft.get() != nullptr && pBuildLeft->readDataInt32() > 0;
+}
+
+bool Unit::moveTowards(qint32 x, qint32 y)
+{
+    const QPoint current(Unit::getX(), Unit::getY());
+    if (m_pMap == nullptr || !m_pMap->onMap(x, y) || m_pTerrain == nullptr)
+    {
+        return false;
+    }
+    if (current.x() == x && current.y() == y)
+    {
+        return true;
+    }
+    // way to the target without a limit of the range
+    UnitPathFindingSystem pfs(m_pMap, this);
+    pfs.setMovepoints(-2);
+    pfs.explore();
+    if (pfs.getTargetCosts(x, y) < 0)
+    {
+        return false;
+    }
+    std::vector<QPoint> path = pfs.getPathFast(x, y);
+    qint32 movepoints = getMovementpoints(current);
+    if (m_fuel >= 0 && movepoints > m_fuel)
+    {
+        movepoints = m_fuel;
+    }
+    // the part of the way the unit can move in this turn, ending on a free field
+    std::vector<QPoint> reachable = pfs.getClosestReachableMovePath(path, movepoints);
+    if (reachable.size() == 0)
+    {
+        return false;
+    }
+    const QPoint target = reachable[0];
+    if (target != current && m_pMap->getTerrain(target.x(), target.y())->getUnit() == nullptr)
+    {
+        const qint32 costs = pfs.getTargetCosts(target.x(), target.y());
+        moveUnitToField(target.x(), target.y());
+        if (m_fuel >= 0 && costs > 0)
+        {
+            setFuel(qMax(0, m_fuel - costs));
+        }
+    }
+    return Unit::getX() == x && Unit::getY() == y;
 }
 
 void Unit::removeUnit(bool killed)

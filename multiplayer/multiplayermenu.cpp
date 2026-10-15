@@ -2818,6 +2818,11 @@ void Multiplayermenu::countdown()
             for (qint32 i = 0; i < m_pMapSelectionView->getCurrentMap()->getPlayerCount(); i++)
             {
                 CONSOLE_PRINT("AI on server for player " + QString::number(i) + " is " + QString::number(pMap->getPlayer(i)->getBaseGameInput()->getAiType()), GameConsole::eDEBUG);
+                // Only the host knows which seats are played by an ai: on a client all seats of others are proxies.
+                // The scripts of game modes which treat humans and ais differently read it from this variable.
+                const GameEnums::AiTypes seatType = pMap->getPlayer(i)->getBaseGameInput()->getAiType();
+                const bool humanSeat = (seatType == GameEnums::AiTypes_Human || seatType == GameEnums::AiTypes_ProxyAi);
+                pMap->getPlayer(i)->getVariables()->createVariable("COW_SEAT_TYPE")->writeDataInt32(humanSeat ? 1 : 2);
                 pMap->getPlayer(i)->serializeObject(stream);
             }
             if (!m_saveGame)

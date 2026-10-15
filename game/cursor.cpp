@@ -1,3 +1,4 @@
+#include "coreengine/hexgrid.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/audiomanager.h"
 
@@ -24,6 +25,20 @@ Cursor::Cursor(GameMap* pMap)
 
 void Cursor::changeCursor(const QString & spriteID, qint32 xOffset, qint32 yOffset, float scale)
 {    
+    if (m_areaOutline)
+    {
+        resetCursorRangeOutline();
+        m_areaOutline = false;
+    }
+    if (HexGrid::enabled() && spriteID == "cursor+missile")
+    {
+        // The cursor of area effects like the missile is an image of the area on the square grid.
+        // On the hex grid the fields of the area are outlined instead: the scale of the image is the range of the area.
+        changeCursor("cursor+default");
+        addCursorRangeOutline(qRound(scale), QColor(255, 60, 60));
+        m_areaOutline = true;
+        return;
+    }
     ObjectManager* pObjectManager = ObjectManager::getInstance();
     if (m_CurrentCursor.get() != nullptr)
     {

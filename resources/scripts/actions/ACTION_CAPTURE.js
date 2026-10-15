@@ -23,7 +23,7 @@ var Constructor = function()
         {
             return false;
         }
-        var capturableBuildings = ACTION_CAPTURE.getCapturableBuildings();
+        var capturableBuildings = ACTION_CAPTURE.getCapturableBuildings(map);
         if (ACTION.isEmptyFieldAndHasNotMoved(action, unit, actionTargetField, targetField, map))
         {
             var building = action.getMovementBuilding();
@@ -47,9 +47,16 @@ var Constructor = function()
     this.capturableBuildings = ["AIRPORT", "FACTORY", "HARBOUR", "HQ", "LABOR", "MINE",
                                 "PIPESTATION", "RADAR", "TOWER", "TOWN", "TEMPORARY_AIRPORT",
                                 "TEMPORARY_HARBOUR", "OILRIG", "POWERPLANT", "AMPHIBIOUSFACTORY",
-                                "FIELD_BASE"]
-    this.getCapturableBuildings = function()
+                                "FIELD_BASE",
+                                "CIV_CITY", "CIV_FARMHOUSE", "CIV_MINE", "CIV_LUMBER_MILL", "CIV_OIL_REFINERY", "CIV_WAREHOUSE", "CIV_SITE"]
+    // in civilization wars silos belong to players and can be captured
+    this.civCapturableBuildings = ["SILO", "SILO_ROCKET"];
+    this.getCapturableBuildings = function(map)
     {
+        if (typeof map !== "undefined" && map !== null && CIVWARS.isActive(map))
+        {
+            return ACTION_CAPTURE.capturableBuildings.concat(ACTION_CAPTURE.civCapturableBuildings);
+        }
         return ACTION_CAPTURE.capturableBuildings;
     };
 

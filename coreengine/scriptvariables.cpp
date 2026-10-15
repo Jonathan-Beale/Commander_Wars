@@ -1,3 +1,5 @@
+#include <algorithm>
+#include <vector>
 #include "coreengine/scriptvariables.h"
 #include "coreengine/interpreter.h"
 #include "coreengine/memorymanagement.h"
@@ -20,16 +22,25 @@ void ScriptVariables::serializeObject(QDataStream& pStream, bool forHash) const
     pStream << getVersion();
     if (forHash)
     {
-        qint32 count = 0;
+        // The variables are hashed sorted by their name. The order they got created in differs between the computers of a
+        // network match: reading a variable creates it and e.g. the ai and the info of the cursor only read on one computer.
+        std::vector<ScriptVariable*> modified;
         for (qint32 i = 0; i < m_Variables.size(); i++)
         {
             if (m_Variables[i]->getModified())
             {
-                m_Variables[i]->serializeObject(pStream);
-                ++count;
+                modified.push_back(m_Variables[i].get());
             }
         }
-        pStream << count;
+        std::sort(modified.begin(), modified.end(), [](ScriptVariable* pLeft, ScriptVariable* pRight)
+        {
+            return pLeft->getId() < pRight->getId();
+        });
+        for (auto* pVariable : modified)
+        {
+            pVariable->serializeObject(pStream);
+        }
+        pStream << static_cast<qint32>(modified.size());
     }
     else
     {

@@ -103,7 +103,9 @@ void ProxyAi::recieveData(quint64 socketID, QByteArray data, NetworkInterface::N
             m_ActionBuffer.append(pAction);
             if (m_pGameMenue != nullptr &&
                 !m_pGameMenue->getActionRunning() &&
-                m_pPlayer == m_pMap->getCurrentPlayer())
+                m_pPlayer == m_pMap->getCurrentPlayer() &&
+                (m_pGameMenue->getActionPerformer() == nullptr ||
+                 m_pGameMenue->getActionPerformer()->simultaneousAcceptsOrder(m_pPlayer)))
             {
                 if (verifyActionStack())
                 {
@@ -166,7 +168,9 @@ void ProxyAi::nextAction()
     std::lock_guard<std::mutex> locker(m_ActionMutex);
     if (m_pGameMenue != nullptr &&
         !m_pGameMenue->getActionRunning() &&
-        m_pPlayer == m_pMap->getCurrentPlayer())
+        m_pPlayer == m_pMap->getCurrentPlayer() &&
+        (m_pGameMenue->getActionPerformer() == nullptr ||
+         m_pGameMenue->getActionPerformer()->simultaneousAcceptsOrder(m_pPlayer)))
     {
         if (verifyActionStack())
         {

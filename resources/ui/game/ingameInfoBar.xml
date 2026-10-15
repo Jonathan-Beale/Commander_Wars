@@ -256,6 +256,23 @@
                     <fontSize>16</fontSize>
                     <Id>IngameInfoBar.PlayerTeamLabelId + loopIdx</Id>
                 </Label>
+                <Label>
+                    <x>10</x>
+                    <y>lastY + lastHeight + 2</y>
+                    <width>1</width>
+                    <text>""</text>
+                    <font>"infoBar"</font>
+                    <fontSize>16</fontSize>
+                </Label>
+                <Label>
+                    <x>10</x>
+                    <y>lastY</y>
+                    <width>270</width>
+                    <text>"-"</text>
+                    <font>"infoBar"</font>
+                    <fontSize>16</fontSize>
+                    <Id>IngameInfoBar.PlayerResourcesLabelId + loopIdx</Id>
+                </Label>
             </loop>
         </childs>
     </Box>

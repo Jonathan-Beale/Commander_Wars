@@ -23,9 +23,9 @@ var Constructor = function()
         return "minimap_silo";
     };
 
-    this.getName = function()
+    this.getName = function(building)
     {
-        return qsTr("Silo");
+        return CIVWARS.getSiloName(building);
     };
 
     this.getDescription = function()
@@ -37,10 +37,13 @@ var Constructor = function()
     {
         return "back_missile+0";
     };
-    this.getVision = function(building)
+    this.getVision = function(building, map)
     {
-        return -1;
+        // civilization wars: silos belong to players and give vision like their other buildings
+        return CIVWARS.getSiloVision(building, map);
     };
+    // civilization wars: a silo of a player launches its missile on its own
+    this.actionList = ["ACTION_CIV_LAUNCH_MISSILE"];
 }
 
 Constructor.prototype = BUILDING;

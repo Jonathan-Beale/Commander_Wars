@@ -53,8 +53,11 @@ void NetworkInterface::attachKeys(QSslConfiguration &sslConfiguration)
             // X509_NAME_add_entry_by_txt(nameField, "C",  MBSTRING_ASC, const_cast<unsigned char*>(reinterpret_cast<const unsigned char *>("DE")),        -1, -1, 0);
             // X509_NAME_add_entry_by_txt(nameField, "O",  MBSTRING_ASC, const_cast<unsigned char*>(reinterpret_cast<const unsigned char *>("CommanderWars")), -1, -1, 0);
             // X509_NAME_add_entry_by_txt(nameField, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char *>("localhost"), -1, -1, 0);
+            X509_NAME_add_entry_by_txt(nameField, "CN", MBSTRING_ASC, reinterpret_cast<const unsigned char *>("CommanderWars"), -1, -1, 0);
+            X509_set_version(x509.get(), 2);
             X509_set_issuer_name(x509.get(), nameField);
-            if (X509_sign(x509.get(), pkey, EVP_sha1()))
+            // sha1 signatures are refused by the default security level of current OpenSSL versions
+            if (X509_sign(x509.get(), pkey, EVP_sha256()))
             {
                 PEM_write_bio_X509(publicKeyBio.get(), x509.get());
                 // reserve buffer for bio data

@@ -50,7 +50,14 @@ void TCPClient::connectTCP(QString address, quint16 port, QString secondaryAdres
     m_port = port;
     m_testedSecondaryAddress = false;
     m_pSocket = MemoryManagement::createNamedQObject<QSslSocket>("QSslSocket", this);
-    connect(m_pSocket.get(), &QSslSocket::encrypted, this, &TCPClient::connected, Qt::QueuedConnection);
+    if (usePlainTcp())
+    {
+        connect(m_pSocket.get(), &QTcpSocket::connected, this, &TCPClient::connected, Qt::QueuedConnection);
+    }
+    else
+    {
+        connect(m_pSocket.get(), &QSslSocket::encrypted, this, &TCPClient::connected, Qt::QueuedConnection);
+    }
     connect(m_pSocket.get(), &QTcpSocket::disconnected, this, &TCPClient::disconnectTCP, Qt::QueuedConnection);
     connect(m_pSocket.get(), &QAbstractSocket::errorOccurred, this, &TCPClient::displayTCPError, Qt::QueuedConnection);
     connect(m_pSocket.get(), &QAbstractSocket::stateChanged, this, &TCPClient::displayStateChange, Qt::QueuedConnection);
@@ -58,7 +65,14 @@ void TCPClient::connectTCP(QString address, quint16 port, QString secondaryAdres
     connect(this, &TCPClient::sigDisconnectTCP, this, &TCPClient::disconnectTCP, Qt::QueuedConnection);
     connect(m_pSocket.get(), &QAbstractSocket::errorOccurred, this, &TCPClient::disconnectTCP, Qt::QueuedConnection);    
     m_pSocket->setSslConfiguration(getClientSslConfiguration());
-    m_pSocket->connectToHostEncrypted(address, port);
+    if (usePlainTcp())
+    {
+        m_pSocket->connectToHost(address, port);
+    }
+    else
+    {
+        m_pSocket->connectToHostEncrypted(address, port);
+    }
     
     // Start RX-Task
     m_pRXTask = MemoryManagement::create<RxTask>(m_pSocket.get(), 0, this, gatewayClient);
@@ -78,7 +92,14 @@ void TCPClient::disconnectTCP()
     {
         CONSOLE_PRINT("Unable to connect to primary address testing secondary", GameConsole::eDEBUG);
         m_pSocket->close();
-        m_pSocket->connectToHostEncrypted(m_secondaryAdress, m_port);
+        if (usePlainTcp())
+        {
+            m_pSocket->connectToHost(m_secondaryAdress, m_port);
+        }
+        else
+        {
+            m_pSocket->connectToHostEncrypted(m_secondaryAdress, m_port);
+        }
         m_testedSecondaryAddress = true;
         CONSOLE_PRINT("Client is running and connecting to \"" + m_secondaryAdress + "\" and port " + QString::number(m_port), GameConsole::eLogLevels::eDEBUG);
         m_connectedAdress = m_secondaryAdress;
@@ -132,7 +153,7 @@ void TCPClient::changeThread(quint64, QThread* pThread)
 
 void TCPClient::connected()
 {
-    if (m_pSocket->isEncrypted() && 
+    if ((m_pSocket->isEncrypted() || usePlainTcp()) && 
         m_socketID > 0 && 
         !m_isConnected)
     {

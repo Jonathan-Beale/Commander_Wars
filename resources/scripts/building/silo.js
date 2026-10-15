@@ -7,8 +7,8 @@ var Constructor = function()
     
     this.loadSprites = function(building, neutral, map)
     {
-        building.loadSpriteV2("silo", GameEnums.Recoloring_Matrix, 400, Qt.point(0,0), TERRAIN.getBuildingTerrainPalette(building));
-        building.loadSpriteV2("silo+mask", GameEnums.Recoloring_Matrix, 400, Qt.point(0,0), "", neutral);
+        // civilization wars: a silo which works on a missile shows it greyed out
+        CIVWARS.loadSiloSprites(building, neutral);
     };
     this.getBaseIncome = function()
     {
@@ -23,9 +23,9 @@ var Constructor = function()
         return "minimap_silo";
     };
 
-    this.getName = function()
+    this.getName = function(building)
     {
-        return qsTr("Silo");
+        return CIVWARS.getSiloName(building);
     };
 
     this.getDescription = function()
@@ -37,9 +37,25 @@ var Constructor = function()
     {
         return "back_missile+1";
     };
-    this.getVision = function(building)
+    this.getVision = function(building, map)
     {
-        return -1;
+        // civilization wars: silos belong to players and give vision like their other buildings
+        return CIVWARS.getSiloVision(building, map);
+    };
+    // civilization wars: a silo of a player builds its missile on its own, see resources/scripts/general/civwars.js
+    this.actionList = ["ACTION_CIV_BUILD_MISSILE"];
+    this.startOfTurn = function(building, map)
+    {
+        if (CIVWARS.isActive(map))
+        {
+            CIVWARS.advanceSiloMissile(building, map);
+        }
+        // the building may be a silo with a missile now
+        var current = building.getTerrain().getBuilding();
+        if (current !== null)
+        {
+            BUILDING.startOfTurn(current, map);
+        }
     };
 }
 

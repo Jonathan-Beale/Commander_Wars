@@ -1,5 +1,8 @@
 #pragma once
 
+#include <QFile>
+#include <QSslKey>
+#include <QSslCertificate>
 #include <QObject>
 #include <QThread>
 #include <QVector>
@@ -86,9 +89,20 @@ public:
 
     static void attachKeys(QSslConfiguration & sslConfiguration);
 
+    /**
+     * @brief usePlainTcp if connections are made without encryption. Set with the environment variable COW_PLAIN_TCP on the host
+     * and on all guests of a direct match. It's a way around the handshake of the encryption crashing the host with some
+     * versions of Qt and OpenSSL. The traffic of the match can be read by others in the same network then.
+     */
+    static bool usePlainTcp()
+    {
+        static const bool plain = qEnvironmentVariableIsSet("COW_PLAIN_TCP");
+        return plain;
+    }
     static QSslConfiguration getClientSslConfiguration()
     {
-        QSslConfiguration sslConfiguration;
+        // an empty configuration has no ciphers and curves: the handshake of the server crashed with it
+        QSslConfiguration sslConfiguration = QSslConfiguration::defaultConfiguration();
         sslConfiguration.setPeerVerifyMode(QSslSocket::VerifyNone);
         sslConfiguration.setProtocol(QSsl::SslProtocol::SecureProtocols);
         return sslConfiguration;

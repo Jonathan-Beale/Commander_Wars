@@ -754,6 +754,27 @@ void Terrain::loadSprites(bool reloadBase)
                                GameMap::getMapJsThis(m_pMap)});
             pInterpreter->doFunction(m_terrainID, function2, args);
         }
+        // civilization wars: a resource deposit is a small icon on its terrain. It keeps its own colours.
+        spScriptVariable pDeposit = m_Variables.getSpVariable("CIV_DEPOSIT");
+        if (pDeposit.get() != nullptr)
+        {
+            const QString deposit = pDeposit->readDataString().toLower();
+            oxygine::ResAnim* pAnim = nullptr;
+            if (!deposit.isEmpty())
+            {
+                pAnim = TerrainManager::getInstance()->getResAnim("civ_deposit+" + deposit, oxygine::ep_ignore_error);
+            }
+            if (pAnim != nullptr)
+            {
+                oxygine::spSprite pSprite = MemoryManagement::create<oxygine::Sprite>();
+                pSprite->setResAnim(pAnim);
+                pSprite->setScale(static_cast<float>(GameMap::getImageSize()) / static_cast<float>(pAnim->getWidth()));
+                pSprite->setPosition(-(pSprite->getScaledWidth() - GameMap::getImageSize()) / 2, -(pSprite->getScaledHeight() - GameMap::getImageSize()));
+                pSprite->setPriority(static_cast<qint32>(DrawPriority::TerrainOverlay) + 1);
+                addChild(pSprite);
+                m_pOverlaySprites.append(pSprite);
+            }
+        }
     }
 }
 

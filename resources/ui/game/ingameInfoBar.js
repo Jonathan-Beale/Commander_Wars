@@ -6,7 +6,7 @@ var IngameInfoBar =
     MinMinimapHeight : 100,
     Width : 300,
     CursorInfoHeigth : 330,
-    BaseGameInfoHeigth : 330,
+    BaseGameInfoHeigth : 352,
     ItemInfoHeight : 270,
     // Player constants
     NoCoFaceSprite : "no_co+face",
@@ -41,7 +41,9 @@ var IngameInfoBar =
     PlayerIncomeLabelIdx : 15,
     PlayerPlayerLabelIdx : 16,
     PlayerTeamLabelIdx : 17,
-    PlayerInfoObjectCount : 18,
+    PlayerResourcesLabelId : "PLAYER_RESOURCES_ID",
+    PlayerResourcesLabelIdx : 18,
+    PlayerInfoObjectCount : 19,
     // Terrain constants
     Gray : "#7F7F7F",
     MaxTerrainHp : 100,
@@ -170,6 +172,7 @@ var IngameInfoBar =
             IngameInfoBar.PlayerInfoObjects[i][IngameInfoBar.PlayerIncomeLabelIdx] = menu.getObject(IngameInfoBar.PlayerIncomeLabelId + i);
             IngameInfoBar.PlayerInfoObjects[i][IngameInfoBar.PlayerPlayerLabelIdx] = menu.getObject(IngameInfoBar.PlayerPlayerLabelId + i);
             IngameInfoBar.PlayerInfoObjects[i][IngameInfoBar.PlayerTeamLabelIdx] = menu.getObject(IngameInfoBar.PlayerTeamLabelId + i);
+            IngameInfoBar.PlayerInfoObjects[i][IngameInfoBar.PlayerResourcesLabelIdx] = menu.getObject(IngameInfoBar.PlayerResourcesLabelId + i);
         }
         IngameInfoBar.TerrainInfoObjects = new Array(IngameInfoBar.TerrainInfoObjectCount);
         IngameInfoBar.TerrainInfoObjects[IngameInfoBar.TerrainNameLabelIdx] = menu.getObject(IngameInfoBar.TerrainNameLabelId);
@@ -303,6 +306,23 @@ var IngameInfoBar =
         }
         IngameInfoBar.PlayerInfoObjects[objIdx][IngameInfoBar.PlayerPlayerLabelIdx].setHtmlText(player.getPlayerID() + 1);
         IngameInfoBar.PlayerInfoObjects[objIdx][IngameInfoBar.PlayerTeamLabelIdx].setHtmlText(player.getTeam() + 1);
+        // civilization wars prototype: food, materials and oil of the player
+        var resourcesLabel = IngameInfoBar.PlayerInfoObjects[objIdx][IngameInfoBar.PlayerResourcesLabelIdx];
+        if (resourcesLabel !== null && resourcesLabel !== undefined)
+        {
+            if (!CIVWARS.isActive(map))
+            {
+                resourcesLabel.setHtmlText("-");
+            }
+            else if (fogInfo)
+            {
+                resourcesLabel.setHtmlText(qsTr("?"));
+            }
+            else
+            {
+                resourcesLabel.setHtmlText(CIVWARS.getResourceText(player));
+            }
+        }
     },
     updateTerrainInfo : function(menu, map, x, y)
     {
@@ -336,12 +356,14 @@ var IngameInfoBar =
         var hp = 0;
         if (building !== null)
         {
-            IngameInfoBar.TerrainInfoObjects[IngameInfoBar.TerrainNameLabelIdx].setHtmlText(building.getName());
+            // civilization wars: the resources stored in the building
+            IngameInfoBar.TerrainInfoObjects[IngameInfoBar.TerrainNameLabelIdx].setHtmlText(building.getName() + CIVWARS.getStoreText(building));
             hp = building.getHp();
         }
         else
         {
-            IngameInfoBar.TerrainInfoObjects[IngameInfoBar.TerrainNameLabelIdx].setHtmlText(terrain.getTerrainName());
+            // civilization wars: the resource deposit of the field
+            IngameInfoBar.TerrainInfoObjects[IngameInfoBar.TerrainNameLabelIdx].setHtmlText(terrain.getTerrainName() + CIVWARS.getDepositText(terrain));
             hp = terrain.getHp();
         }
         if (hp > 0)
@@ -465,7 +487,18 @@ var IngameInfoBar =
                 var unitRank = unit.getUnitRank();
                 var rankShare = UNITRANKINGSYSTEM.getProgressShare(unit);
                 var pendingPicks = UNITRANKINGSYSTEM.getPendingPicks(unit);
-                if (unitRank < 0)
+                var projectText = "";
+                if (CIVWARS.isActive(map))
+                {
+                    // civilization wars: work in progress of an infantry
+                    projectText = CIVWARS.getProjectText(unit, map);
+                }
+                if (projectText !== "")
+                {
+                    rankBar.setText(projectText);
+                    rankBar.changeBar(CIVWARS.getProjectProgress(unit, map), "#00B0F0", IngameInfoBar.Gray);
+                }
+                else if (unitRank < 0)
                 {
                     rankBar.setText(UNITRANKINGSYSTEM.getName(unitRank));
                     rankBar.changeBar(1, "#C8A000", IngameInfoBar.Gray);

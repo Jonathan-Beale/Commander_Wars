@@ -12,6 +12,7 @@
 #include "game/terrain.h"
 
 #include "objects/base/tooltip.h"
+#include "3rd_party/oxygine-framework/oxygine/actor/ClipRectActor.h"
 
 class Player;
 class Terrain;
@@ -730,6 +731,17 @@ public:
      */
     Q_INVOKABLE void moveUnitToField(qint32 x, qint32 y);
     /**
+     * @brief moveTowards moves the unit along its way to the given field as far as it gets in one turn and uses the fuel for it.
+     * The unit is moved without animation. Used by units which act on their own e.g. the trucks of civilization wars.
+     * @return true if the unit stands on the field afterwards
+     */
+    Q_INVOKABLE bool moveTowards(qint32 x, qint32 y);
+    /**
+     * @brief isInProduction if the unit is still produced, see civilization wars. Read from the variables of the unit,
+     * so it's the same on all computers of a network match and in the process of the ai.
+     */
+    Q_INVOKABLE bool isInProduction();
+    /**
      * @brief showCORange
      */
     Q_INVOKABLE void showRanges();
@@ -1236,6 +1248,12 @@ private:
     qint32 m_maxFuel{-1};
     qint32 m_baseMovementPoints{0};
     bool m_Moved{false};
+    /**
+     * @brief m_buildFraction finished part of the sprites of the unit from their bottom, the rest is greyed out. Less than 1 for a unit which is still produced.
+     * Such a unit can't be moved. Updated by updateSprites from the script variables of the unit.
+     */
+    float m_buildFraction{1.0f};
+    oxygine::spClipRectActor m_spriteClip;
     QVector<spUnit> m_TransportUnits;
     qint32 m_capturePoints{0};
     qint32 m_UnitRank{GameEnums::UnitRank_None};

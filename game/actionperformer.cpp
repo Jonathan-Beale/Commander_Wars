@@ -1,3 +1,4 @@
+#include "ai/proxyai.h"
 #include "resource_management/movementtablemanager.h"
 #include "game/actionperformer.h"
 #include "coreengine/perftrace.h"
@@ -53,7 +54,15 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
     }
     MovementTableManager::movementStateChanged();
     CONSOLE_PRINT("Start running action " + pGameAction->getActionID(), GameConsole::eDEBUG);
-    if (simultaneousIntercept(pGameAction))
+    const bool simInternal = m_simInternalAction;
+    m_simInternalAction = false;
+    // an order of a network match is checked and send to the other computers like an action before it's queued
+    bool simOrder = false;
+    if (simultaneousNetworkMatch())
+    {
+        simOrder = !simInternal && m_simPhase == SimPhase::Collecting && pGameAction.get() != nullptr && !pGameAction->getIsLocal();
+    }
+    else if (simultaneousIntercept(pGameAction))
     {
         return;
     }
@@ -63,6 +72,11 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
     if (requiresMapHash())
     {
         mapHash = m_pMap->getMapHash();
+        if (qEnvironmentVariableIsSet("COW_SYNC_DEBUG"))
+        {
+            // to find what differs when a network match runs out of sync: compare the lines of the computers
+            CONSOLE_PRINT("SYNCDUMP before " + pGameAction->getActionID() + " counter " + QString::number(m_syncCounter + 1) + " hash " + QString::number(qHash(mapHash) % 100000) + " " + m_pMap->getSyncDump(), GameConsole::eERROR);
+        }
     }
     PerfTrace::mark("act: hashed");
     if (m_exit)
@@ -78,7 +92,7 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
         CONSOLE_PRINT("Ignoring action request cause an action is currently performed", GameConsole::eWARNING);
         return;
     }
-    else if (m_mapHash.length() > 0 && m_mapHash != mapHash)
+    else if (m_mapHash.length() > 0 && m_mapHash != mapHash && !getSimultaneousTurns())
     {
         CONSOLE_PRINT("An interaction changed the map state outside performing actions.", GameConsole::eERROR);
     }
@@ -109,6 +123,11 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
         Player* pCurrentPlayer = m_pMap->getCurrentPlayer();
         auto* baseGameInput = pCurrentPlayer->getBaseGameInput();
         bool proxyAi = baseGameInput != nullptr && (baseGameInput->getAiType() == GameEnums::AiTypes_ProxyAi || fromAiPipe || dynamic_cast<DummyAi*>(baseGameInput) != nullptr);
+        if (simInternal)
+        {
+            // created by this computer: there's nothing of another computer to compare it with
+            proxyAi = false;
+        }
         CONSOLE_PRINT("GameMenue::performAction " + pGameAction->getActionID() + " at X: " + QString::number(pGameAction->getTarget().x())
                       + " at Y: " + QString::number(pGameAction->getTarget().y()) +
                       " is proxy ai " + QString::number(proxyAi), GameConsole::eDEBUG);
@@ -130,11 +149,11 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
         {
             if (asyncMatch)
             {
-                CONSOLE_PRINT("Async found cause action sync counter " + QString::number(pGameAction->getSyncCounter()) + " doesn't match map sync counter " + QString::number(m_syncCounter + 1), GameConsole::eDEBUG);
+                CONSOLE_PRINT("Async found cause action sync counter " + QString::number(pGameAction->getSyncCounter()) + " doesn't match map sync counter " + QString::number(m_syncCounter + 1), GameConsole::eERROR);
             }
             else
             {
-                CONSOLE_PRINT("Async found cause map hash is different from action map hash", GameConsole::eDEBUG);
+                CONSOLE_PRINT("Async found cause map hash is different from action map hash. Action " + pGameAction->getActionID() + " with sync counter " + QString::number(pGameAction->getSyncCounter()), GameConsole::eERROR);
             }
             if (multiplayer &&
                 m_pMenu != nullptr)
@@ -152,22 +171,27 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
             {
                 m_syncCounter = pGameAction->getSyncCounter();
             }
-            else if (!pGameAction->getIsLocal())
+            else if (!pGameAction->getIsLocal() && !simInternal)
             {
                 ++m_syncCounter;
             }
             CONSOLE_PRINT("Updated sync counter to " + QString::number(m_syncCounter), GameConsole::eDEBUG);
             m_pStoredAction.reset();
             m_pMap->getGameRules()->pauseRoundTime();
+            // an order is checked for traps when its round performs it, on all computers
             if (!pGameAction->getIsLocal() &&
                 baseGameInput != nullptr &&
                 !Settings::getInstance()->getAiSlave() &&
-                baseGameInput->getAiType() != GameEnums::AiTypes_ProxyAi)
+                !simOrder &&
+                (baseGameInput->getAiType() != GameEnums::AiTypes_ProxyAi || simInternal))
             {
                 pGameAction = doMultiTurnMovement(pGameAction);
             }
             Unit * pMoveUnit = pGameAction->getTargetUnit();
-            doTrapping(pGameAction);
+            if (!simOrder)
+            {
+                doTrapping(pGameAction);
+            }
             // send action to other players if needed
             pGameAction->setSyncCounter(m_syncCounter);
             pGameAction->setMapHash(mapHash);
@@ -180,7 +204,7 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
                 CONSOLE_PRINT("Sending action to ai pipe", GameConsole::eDEBUG);
                 emit sigAiProcesseSendAction(pGameAction);
             }
-            if (requiresForwarding(pGameAction))
+            if (!simInternal && requiresForwarding(pGameAction))
             {
                 CONSOLE_PRINT("Sending action to other players with sync counter " + QString::number(m_syncCounter), GameConsole::eDEBUG);
                 QByteArray data;
@@ -195,6 +219,19 @@ void ActionPerformer::performAction(spGameAction pGameAction, bool fromAiPipe)
                 m_pMap->getGameRules()->getRoundTimer()->setInterval(pGameAction->getRoundTimerTime());
             }
 
+            if (simOrder)
+            {
+                // the order waits for its round
+                GlobalUtils::setUseSeed(false);
+                m_actionRunning = false;
+                if (m_pMenu != nullptr)
+                {
+                    m_pMenu->setSaveAllowed(true);
+                }
+                simultaneousQueueOrder(pGameAction);
+                Mainapp::getInstance()->continueRendering();
+                return;
+            }
             // record action if required
             if (m_pMenu != nullptr)
             {
@@ -835,11 +872,49 @@ bool ActionPerformer::simultaneousIntercept(spGameAction & pGameAction)
     {
         return false;
     }
+    simultaneousQueueOrder(pGameAction);
+    return true;
+}
+
+bool ActionPerformer::simultaneousNetworkMatch() const
+{
+    return m_pMenu != nullptr && m_pMenu->getNetworkInterface() != nullptr && getSimultaneousTurns();
+}
+
+bool ActionPerformer::simultaneousAcceptsOrder(Player* pPlayer) const
+{
+    if (!getSimultaneousTurns())
+    {
+        return true;
+    }
+    return m_simPhase == SimPhase::Collecting &&
+           !m_simAiBusy &&
+           !m_actionRunning &&
+           pPlayer != nullptr &&
+           pPlayer->getPlayerID() == m_simAskedPlayer;
+}
+
+void ActionPerformer::simultaneousPerformInternal(spGameAction & pGameAction, quint32 seed)
+{
+    if (simultaneousNetworkMatch())
+    {
+        // all computers create this action on their own: it needs the same dice everywhere
+        pGameAction->setSeed(seed);
+        m_simInternalAction = true;
+    }
+    performAction(pGameAction);
+    m_simInternalAction = false;
+}
+
+void ActionPerformer::simultaneousQueueOrder(spGameAction & pGameAction)
+{
     qint32 player = m_simAskedPlayer;
     if (player < 0)
     {
         player = m_pMap->getCurrentPlayer()->getPlayerID();
     }
+    m_simLastSeed = pGameAction->getSeed();
+    m_simSeedStep = 0;
     if (pGameAction->getActionID() == CoreAI::ACTION_NEXT_PLAYER)
     {
         m_simEnded[player] = true;
@@ -862,7 +937,6 @@ bool ActionPerformer::simultaneousIntercept(spGameAction & pGameAction)
         // continue outside of the call stack of the player input
         QTimer::singleShot(0, this, &ActionPerformer::simultaneousCollect);
     }
-    return true;
 }
 
 void ActionPerformer::simultaneousOnActionPerformed()
@@ -880,6 +954,9 @@ void ActionPerformer::simultaneousOnActionPerformed()
             m_simQueues.assign(count, std::deque<SimOrder>());
             m_simEnded.assign(count, false);
             m_simFirstPlayer = 0;
+            // the seed of the start of the match is the same on all computers
+            m_simLastSeed = GlobalUtils::getSeed();
+            m_simSeedStep = 0;
             m_simRolloverRemaining = simultaneousAlivePlayers() - 1;
             m_simPhase = SimPhase::InitialRollover;
             simultaneousRolloverStep();
@@ -910,7 +987,7 @@ void ActionPerformer::simultaneousRolloverStep()
         // the normal next player action does the end and start of day processing of one player
         --m_simRolloverRemaining;
         spGameAction pAction = MemoryManagement::create<GameAction>(CoreAI::ACTION_NEXT_PLAYER, m_pMap);
-        performAction(pAction);
+        simultaneousPerformInternal(pAction, m_simLastSeed + 7919u * (++m_simSeedStep));
     }
     else
     {
@@ -955,7 +1032,18 @@ void ActionPerformer::simultaneousCollect()
             // this player still has to decide
             m_simAskedPlayer = player;
             m_pMap->setCurrentPlayer(player);
-            if (dynamic_cast<CoreAI*>(m_pMap->getPlayer(player)->getBaseGameInput()) != nullptr)
+            auto* pInput = m_pMap->getPlayer(player)->getBaseGameInput();
+            if (pInput != nullptr && pInput->getAiType() == GameEnums::AiTypes_ProxyAi)
+            {
+                // the player of another computer: its order arrives over the network, maybe it's already there
+                simultaneousShowStatus();
+                ProxyAi* pProxy = dynamic_cast<ProxyAi*>(pInput);
+                if (pProxy != nullptr)
+                {
+                    QTimer::singleShot(0, pProxy, &ProxyAi::nextAction);
+                }
+            }
+            else if (dynamic_cast<CoreAI*>(pInput) != nullptr)
             {
                 QTimer::singleShot(0, this, [this, player]()
                 {
@@ -1017,8 +1105,17 @@ void ActionPerformer::simultaneousAskAi(qint32 player)
     if (m_simPhase == SimPhase::Collecting && m_simAskedPlayer == player)
     {
         // no order was given
-        m_simEnded[player] = true;
-        m_simAskedPlayer = -1;
+        if (simultaneousNetworkMatch())
+        {
+            // the other computers have to know it: the end of the day is send like an order
+            spGameAction pEndAction = MemoryManagement::create<GameAction>(CoreAI::ACTION_NEXT_PLAYER, m_pMap);
+            performAction(pEndAction);
+        }
+        if (m_simPhase == SimPhase::Collecting && m_simAskedPlayer == player)
+        {
+            m_simEnded[player] = true;
+            m_simAskedPlayer = -1;
+        }
     }
     m_simCollectPending = false;
     simultaneousCollect();
@@ -1055,7 +1152,7 @@ void ActionPerformer::simultaneousResolveNext()
         }
         ++m_simExecuted;
         // the round continues with the action performed signal
-        performAction(pAction);
+        simultaneousPerformInternal(pAction, order.pAction->getSeed());
         return;
     }
     if (m_simRoundsToday >= SIMULTANEOUS_MAX_ROUNDS_PER_DAY)
@@ -1078,6 +1175,12 @@ spGameAction ActionPerformer::simultaneousValidate(SimOrder & order, qint32 play
     if (pPlayer->getIsDefeated())
     {
         return spGameAction();
+    }
+    if (simultaneousNetworkMatch())
+    {
+        // the damage of an attack is calculated here again: all computers need the same dice for it
+        GlobalUtils::seed(pAction->getSeed());
+        GlobalUtils::setUseSeed(true);
     }
     Unit* pUnit = pAction->getTargetUnit();
     if (order.pUnit != nullptr)

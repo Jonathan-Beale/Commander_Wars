@@ -2,6 +2,8 @@
 <resources>
     <set path = "resources/images/terrain/" />
     <atlas linearFilter = "false">
+        <image file="civ_deposit+iron.png" />
+        <image file="civ_deposit+oil.png" />
         <image file="plains/plains+0.png" />
         <image file="plains/plains+1.png" />
         <image file="plains/plains+2.png" />

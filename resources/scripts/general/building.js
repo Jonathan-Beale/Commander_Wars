@@ -178,6 +178,8 @@ var BUILDING =
 
     startOfTurn : function(building, map)
     {
+        // civilization wars: population of cities and headquarters
+        CIVWARS.onBuildingStartOfTurn(building, map);
         var owner = building.getOwner();
         if (owner !== null)
         {
@@ -242,7 +244,8 @@ var BUILDING =
         // default impl replenishes our units
         // gets called at the start of a turn
         var unit = building.getTerrain().getUnit();
-        if (building.canRepair(unit, always))
+        // civilization wars: a unit which is still produced gets its hp with its production
+        if (building.canRepair(unit, always) && !CIVWARS.isInProduction(unit))
         {
             var x = unit.getX();
             var y = unit.getY();

@@ -35,11 +35,12 @@ var Constructor = function()
         var factoryRule = map.getGameRules().getGameRule("GAMERULE_HOVERCRAFT_FACTORIES");
         if (factoryRule && factoryRule.getRuleValue(0) > 0)
         {
-            return FACTORY.constructionList.concat(AMPHIBIOUSFACTORY.constructionList);
+            return CIVWARS.getConstructionList(FACTORY.constructionList.concat(AMPHIBIOUSFACTORY.constructionList), building);
         }
         else
         {
-            return FACTORY.constructionList;
+            // civilization wars: the factory also produces trucks
+            return CIVWARS.getConstructionList(FACTORY.constructionList, building);
         }
     };
     this.getTerrainAnimationForeground = function(unit, terrain, defender, map)

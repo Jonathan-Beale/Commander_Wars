@@ -519,6 +519,15 @@ qint32 Building::getVision()
     }
 }
 
+void Building::setSpriteTint(qint32 red, qint32 green, qint32 blue, qint32 alpha)
+{
+    const QColor color(qBound(0, red, 255), qBound(0, green, 255), qBound(0, blue, 255), qBound(0, alpha, 255));
+    for (auto & sprite : m_pBuildingSprites)
+    {
+        sprite->setColor(color);
+    }
+}
+
 void Building::updateBuildingSprites(bool neutral)
 {
     Interpreter* pInterpreter = Interpreter::getInstance();

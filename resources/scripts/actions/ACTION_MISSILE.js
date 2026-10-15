@@ -13,6 +13,12 @@ var Constructor = function()
             if ((building !== null) &&
                 (missileBuildings.indexOf(building.getBuildingID()) >= 0))
             {
+                // a silo of another player has to be captured first. Silos only have an owner in civilization wars.
+                var siloOwner = building.getOwner();
+                if (siloOwner !== null && unit.getOwner().checkAlliance(siloOwner) === GameEnums.Alliance_Enemy)
+                {
+                    return false;
+                }
                 return true;
             }
         }
@@ -34,10 +40,12 @@ var Constructor = function()
     };
     this.getStepCursor = function(action, cursorData, map)
     {
+        // the cursor shows the area of the blast
+        var radius = CIVWARS.getMissileRadius(map);
         cursorData.setCursor("cursor+missile");
-        cursorData.setXOffset(- map.getImageSize() * 2);
-        cursorData.setYOffset(- map.getImageSize() * 2);
-        cursorData.setScale(2);
+        cursorData.setXOffset(- map.getImageSize() * radius);
+        cursorData.setYOffset(- map.getImageSize() * radius);
+        cursorData.setScale(radius);
     };
     this.getStepData = function(action, data, map)
     {
@@ -92,7 +100,14 @@ var Constructor = function()
     this.performLaunchSiloPostAnimation = function(postAnimation, map)
     {
         // replace silo with rocket with
-        ACTION_MISSILE.postAnimationUnit.getTerrain().loadBuilding("SILO");
+        var siloTerrain = ACTION_MISSILE.postAnimationUnit.getTerrain();
+        // the empty silo keeps its owner
+        var siloOwner = siloTerrain.getBuilding() !== null ? siloTerrain.getBuilding().getOwner() : null;
+        siloTerrain.loadBuilding("SILO");
+        if (siloOwner !== null)
+        {
+            siloTerrain.getBuilding().setOwner(siloOwner);
+        }
         var animation = GameAnimationFactory.createAnimation(map, ACTION_MISSILE.postAnimationUnit.getX() - 1, ACTION_MISSILE.postAnimationUnit.getY() - 7, 30);
         animation.addSprite("silo+launch", map.getImageSize() / 4, -map.getImageSize() / 2, 0, 2, 0);
         animation.setSound("missile_launch.wav");
@@ -101,7 +116,7 @@ var Constructor = function()
 
     this.performPostAnimation = function(postAnimation, map)
     {
-        var radius = 2;
+        var radius = CIVWARS.getMissileRadius(map);
         var damage = 3;
         var fields = globals.getCircle(0, radius);
         // check all fields we can attack

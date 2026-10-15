@@ -263,6 +263,18 @@ public:
      */
     Q_INVOKABLE void updatePlayerColor(bool visible);
     /**
+     * @brief updateBuildingSpritesForScript loads the sprites of the building again, e.g. after its script changed how it looks
+     */
+    Q_INVOKABLE void updateBuildingSprites()
+    {
+        updateBuildingSprites(m_neutralLoaded);
+    }
+    /**
+     * @brief setSpriteTint multiplies the colour of all sprites of the building, e.g. to show it greyed out.
+     * Needs to be called by loadSprites, cause the sprites are created again whenever the building gets updated.
+     */
+    Q_INVOKABLE void setSpriteTint(qint32 red, qint32 green, qint32 blue, qint32 alpha);
+    /**
      * @brief getOwnerID
      * @return the player owner index of this building
      */

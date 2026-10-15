@@ -106,6 +106,7 @@ without end.
 | `width`, `height` | yes | Size of the grid in hexes. |
 | `layout` | no | Leave it out for the hex layout described above. `"rectangle"` means the rows are written like a square-grid map, all starting at the same column; see "Rectangle layout". |
 | `wrap` | no | `true` makes the map wrap around east to west; see "Wrapping maps (globe)". |
+| `rules` | no | List of game rule ids switched on for this map, e.g. `["GAMERULE_CIVILIZATION_WARS"]`. |
 | `legend` | no | Symbols used in `terrain`. See below. |
 | `terrain` | yes | One text line per row, top row first. Each line holds `width` symbols separated by spaces. Extra spaces are ignored. |
 | `buildings` | no | List of buildings: `id`, `x`, `y`, and `owner` (0 = neutral, 1 = player 1, ...). |
@@ -360,3 +361,53 @@ map are all reported there. If the file is not valid JSON, no map is created.
 - Roads, rivers and coasts are drawn with the art of the square game. Roads and rivers running left to right look
   connected; diagonal ones are drawn as separate pieces. This is cosmetic and does not change movement.
 - Buildings larger than one hex are not supported.
+
+## Civilization Wars prototype
+
+Add `"rules": ["GAMERULE_CIVILIZATION_WARS"]` to a map to play it with Food, Metal and Oil. The mode adds these
+building ids, which can be used in `buildings` like any other:
+
+| Id | Name | Each turn |
+|---|---|---|
+| `CIV_CITY` | City | funds, 2 Food, 2 Metal and 2 Oil |
+| `CIV_WAREHOUSE` | Warehouse | funds |
+| `CIV_FARMHOUSE` | Farmhouse | 1 Food for each Plains hex next to it |
+| `CIV_LUMBER_MILL` | Lumber Mill | 1 Metal for each Forest hex next to it |
+| `CIV_MINE` | Mine | 1 Metal, plus 1 for each Mountain hex and 4 for each iron deposit next to it |
+| `CIV_OIL_REFINERY` | Oil Refinery | 1 Oil, plus 4 for each oil deposit next to it |
+
+Resource deposits are placed on any terrain with a `deposits` list next to `buildings`; iron belongs mostly on
+mountains. A deposit shows as a small icon and counts for a Mine or Oil Refinery on its hex or next to it:
+
+```json
+"deposits": [
+    {"id": "IRON", "x": 13, "y": 3},
+    {"id": "OIL", "x": 4, "y": 6}
+]
+```
+
+A map without any deposit gets random ones when the match starts.
+
+Every building stores its resources itself. A Mine, Lumber Mill, Farmhouse or Oil Refinery fills its own small store
+(30) and stops when it is full. Only what is stored in a logistical center can be spent: a City (100 Food, 50 Metal,
+50 Oil), a Warehouse (50 / 150 / 150) or a headquarters (50 / 100 / 100).
+
+Buildings have a radius: 3 for a City, Warehouse and headquarters, 2 for the other buildings of this mode and for
+a Base, Airport and Port. The hexes in the radius of a player's buildings are their territory, and its border is
+always drawn in the player's colour. A center collects
+the stores of your Mines, Farmhouses, Lumber Mills and Oil Refineries in its radius each turn, and a Base, Airport or
+Port builds its units from the stock of the centers which have it in their radius. So place production buildings
+close to a City, Warehouse or headquarters.
+
+Cities and headquarters have a population (3 at the start, 10 at most). It eats 1 Food each per turn from the store of
+its building and grows when enough Food is left. Each unit a human player builds takes 1 population from the nearest
+City or headquarters.
+
+The Truck (`CIV_TRUCK`, built at a Base) carries up to 40 resources between your buildings with Load Resources and
+Unload Resources. With Auto Deliver it drives on its own when you end your turn. Each human player starts with two.
+
+Metal is the ammunition and Oil the fuel of the units: producing or resupplying a unit takes 1 Metal for each point
+of ammo and 1 Oil for each point of fuel from the stock of its owner. Machine guns and soldiers on foot are free.
+
+A hex with a building or a road on it doesn't count as Plains anymore. All values, the build costs and the starting
+resources are in `resources/scripts/general/civwars.js`. `maps/2_player/Civ Test` is the test map.

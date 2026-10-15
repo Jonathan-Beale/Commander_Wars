@@ -61,6 +61,14 @@ public slots:
      */
     virtual void startGame();
     /**
+     * @brief isGameReady for automation scripts: if the match could be started now. Scripts only see the functions
+     * of this class, so the menu of network matches overrides it.
+     */
+    virtual bool isGameReady()
+    {
+        return true;
+    }
+    /**
      * @brief defeatClosedPlayers
      */
     void defeatClosedPlayers();

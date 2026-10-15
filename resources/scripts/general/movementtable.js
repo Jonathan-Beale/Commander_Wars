@@ -13,6 +13,11 @@ var MOVEMENTTABLE =
     getMovementpointsFromTable : function(terrain, movementpointsTable)
     {
         var terrainID = terrain.getID();
+        // the buildings of the civilization wars prototype are entered like a town by all units
+        if (CIVWARS.buildingIds.indexOf(terrainID) >= 0)
+        {
+            terrainID = CIVWARS.movementAlias;
+        }
         for (var i = 0; i < movementpointsTable.length; i++)
         {
             if (movementpointsTable[i][0] === terrainID)

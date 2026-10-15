@@ -1,0 +1,206 @@
+{
+    "name": "Civ Test",
+    "description": "Civilization Wars prototype: capture, develop the terrain, extract resources, build infrastructure and fight. Plains in the corners for Farmhouses, forests for Lumber Mills, mountains for Mines. Iron deposits make Mines and oil deposits make Oil Refineries worth it.",
+    "author": "Hex prototype",
+    "players": 2,
+    "width": 20,
+    "height": 12,
+    "rules": [
+        "GAMERULE_CIVILIZATION_WARS"
+    ],
+    "legend": {
+        ".": "PLAINS",
+        "F": "FOREST",
+        "M": "MOUNTAIN",
+        "~": "RIVER",
+        "=": "STREET",
+        "B": "BRIDGE1",
+        "S": "SEA"
+    },
+    "terrain": [
+        "S S S S S S S S S S S S S S S S S S S S",
+        " S . . . . F F F . . . . M M . . . . S S",
+        "  S . . . . F F F . . . . M M M . . . . S",
+        "   S . . . . . F . . . ~ . . M . . . . . S",
+        "    S S . . . . . . . . ~ . . . . . . . . S",
+        "     S S . . . . . . = = B = = . . . . . S S",
+        "      S S S . . . . . . . ~ . . . . . . S S S",
+        "       S . . . . . . . . . ~ . . . . . . S S S",
+        "        S . . . . . M . . . ~ . . F . . . . . S",
+        "         S . . . . M M M . . . . F F F . . . . S",
+        "          S S . . . . M M . . . . F F F . . . . S",
+        "           S S S S S S S S S S S S S S S S S S S S"
+    ],
+    "deposits": [
+        {"id": "IRON", "x": 13, "y": 3},
+        {"id": "IRON", "x": 12, "y": 2},
+        {"id": "IRON", "x": 6, "y": 8},
+        {"id": "IRON", "x": 7, "y": 9},
+        {"id": "IRON", "x": 5, "y": 4},
+        {"id": "IRON", "x": 14, "y": 7},
+        {"id": "OIL", "x": 4, "y": 6},
+        {"id": "OIL", "x": 3, "y": 7},
+        {"id": "OIL", "x": 4, "y": 5},
+        {"id": "OIL", "x": 15, "y": 6}
+    ],
+    "buildings": [
+        {
+            "id": "CIV_CITY",
+            "x": 2,
+            "y": 2,
+            "owner": 1
+        },
+        {
+            "id": "CIV_WAREHOUSE",
+            "x": 3,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "FACTORY",
+            "x": 3,
+            "y": 1,
+            "owner": 1
+        },
+        {
+            "id": "AIRPORT",
+            "x": 1,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "HARBOUR",
+            "x": 1,
+            "y": 2,
+            "owner": 1
+        },
+        {
+            "id": "CIV_CITY",
+            "x": 17,
+            "y": 9,
+            "owner": 2
+        },
+        {
+            "id": "CIV_WAREHOUSE",
+            "x": 16,
+            "y": 8,
+            "owner": 2
+        },
+        {
+            "id": "FACTORY",
+            "x": 16,
+            "y": 10,
+            "owner": 2
+        },
+        {
+            "id": "AIRPORT",
+            "x": 18,
+            "y": 8,
+            "owner": 2
+        },
+        {
+            "id": "HARBOUR",
+            "x": 18,
+            "y": 9,
+            "owner": 2
+        },
+        {
+            "id": "CIV_CITY",
+            "x": 9,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "CIV_CITY",
+            "x": 9,
+            "y": 9,
+            "owner": 0
+        },
+        {
+            "id": "CIV_WAREHOUSE",
+            "x": 7,
+            "y": 5,
+            "owner": 0
+        },
+        {
+            "id": "CIV_WAREHOUSE",
+            "x": 13,
+            "y": 5,
+            "owner": 0
+        },
+        {
+            "id": "CIV_FARMHOUSE",
+            "x": 15,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "CIV_LUMBER_MILL",
+            "x": 4,
+            "y": 2,
+            "owner": 0
+        },
+        {
+            "id": "CIV_MINE",
+            "x": 14,
+            "y": 3,
+            "owner": 0
+        },
+        {
+            "id": "CIV_OIL_REFINERY",
+            "x": 3,
+            "y": 6,
+            "owner": 0
+        }
+    ],
+    "units": [
+        {
+            "id": "INFANTRY",
+            "x": 3,
+            "y": 2,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 2,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 4,
+            "y": 3,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 2,
+            "y": 4,
+            "owner": 1
+        },
+        {
+            "id": "INFANTRY",
+            "x": 16,
+            "y": 9,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 17,
+            "y": 8,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 15,
+            "y": 8,
+            "owner": 2
+        },
+        {
+            "id": "INFANTRY",
+            "x": 16,
+            "y": 7,
+            "owner": 2
+        }
+    ]
+}

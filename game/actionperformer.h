@@ -120,6 +120,11 @@ public:
      */
     bool simultaneousAiMayAct(Player* pPlayer) const;
     /**
+     * @brief simultaneousAcceptsOrder network matches: if the order of the given player, received from another computer,
+     * can be taken right now. Else it has to wait until this computer asks the player.
+     */
+    bool simultaneousAcceptsOrder(Player* pPlayer) const;
+    /**
      * @brief getSimultaneousInfo
      * @return executed orders, cancelled orders, attacks changed to moves and rounds since the game start separated by ';'
      */
@@ -159,6 +164,19 @@ private:
      * @return true if the action was queued as order instead of being performed
      */
     bool simultaneousIntercept(spGameAction & pGameAction);
+    /**
+     * @brief simultaneousQueueOrder stores the action as order of the asked player, or its end of the day
+     */
+    void simultaneousQueueOrder(spGameAction & pGameAction);
+    /**
+     * @brief simultaneousNetworkMatch In a network match all computers run the rounds on their own, the same way:
+     * only the orders of the players are send. The actions of a round and the day changes are created by each computer.
+     */
+    bool simultaneousNetworkMatch() const;
+    /**
+     * @brief simultaneousPerformInternal performs an action of a round or a day change. It isn't send to other computers.
+     */
+    void simultaneousPerformInternal(spGameAction & pGameAction, quint32 seed);
     void simultaneousOnActionPerformed();
     void simultaneousRolloverStep();
     void simultaneousCollect();
@@ -187,6 +205,16 @@ private:
      */
     bool m_simAiBusy{false};
     bool m_simCollectPending{false};
+    /**
+     * @brief m_simInternalAction the action which gets performed right now was created by the rounds of this computer
+     */
+    bool m_simInternalAction{false};
+    /**
+     * @brief m_simLastSeed seed of the last order. The seeds of the actions this computer creates are derived from it,
+     * so all computers of a network match roll the same dice.
+     */
+    quint32 m_simLastSeed{0};
+    quint32 m_simSeedStep{0};
     spLabel m_simLabel;
     QString m_simNotice;
     qint32 m_simNoticeRound{0};

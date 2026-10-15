@@ -84,6 +84,13 @@ signals:
     void sigReadyAndLeave();
     void sigServerResponded();
 public slots:
+    /**
+     * @brief isGameReady for automation scripts: if the host could start the match now
+     */
+    virtual bool isGameReady() override
+    {
+        return getGameReady();
+    }
 
     // general slots
     virtual void buttonBack() override;

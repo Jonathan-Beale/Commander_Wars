@@ -51,6 +51,8 @@ var Constructor = function()
         var unit = map.spawnUnit(target.x, target.y, unitID, player, 0, true);
         // pay for the unit
         player.addFunds(-action.getCosts());
+        // civilization wars: the ammo and fuel of the unit are taken from the Metal and Oil of the player
+        CIVWARS.onUnitProduced(unit, map, building);
         map.getGameRecorder().buildUnit(player.getPlayerID(), unitID, player.getPlayerID());
         unit.setHasMoved(true);
         unit.setUnitVisible(false, player);
@@ -113,6 +115,8 @@ var Constructor = function()
             }
         }
         var funds = player.getFunds();
+        // civilization wars: the building uses the resources of the logistical centers next to it
+        CIVWARS.beginProductionScope(building, map);
         for (var i = 0; i < unitData.length; i++)
         {
             var name = Global[unitData[i][1]].getName();
@@ -121,8 +125,27 @@ var Constructor = function()
             {
                 enabled = true;
             }
-            data.addData(name + " " + unitData[i][0].toString(), unitData[i][1], unitData[i][1], unitData[i][0], enabled);
+            var supplyText = "";
+            if (map !== null && CIVWARS.isActive(map) && CIVWARS.paysSupply(player))
+            {
+                // civilization wars: a unit needs Metal for its ammo and Oil for its fuel.
+                // Only funds decide if a unit can be build: without enough Metal or Oil it starts with less ammo and fuel.
+                supplyText = CIVWARS.getUnitSupplyText(unitData[i][1], player);
+                // the Metal to manufacture the unit is needed like the funds
+                if (!CIVWARS.canManufacture(player, unitData[i][1]))
+                {
+                    enabled = false;
+                }
+                // each unit needs population of a city
+                if (!CIVWARS.canDraft(player, building))
+                {
+                    enabled = false;
+                    supplyText += qsTr(" - no population");
+                }
+            }
+            data.addData(name + " " + unitData[i][0].toString() + supplyText, unitData[i][1], unitData[i][1], unitData[i][0], enabled);
         }
+        CIVWARS.endProductionScope();
     };
 
     this.getIsBaseProductionAction = function(map)

@@ -68,6 +68,11 @@ private:
 private:
     oxygine::spSprite m_CurrentCursor;
     oxygine::spActor m_cursorRangeOutline;
+    /**
+     * @brief m_areaOutline if the range outline shows the area of the current cursor on the hex grid
+     */
+    bool m_areaOutline{false};
+
     bool m_onMap{false};
     GameMap* m_pMap{nullptr};
 
